@@ -10,14 +10,8 @@ terraform {
 provider "cloudtower" {
   username          = "yanzhen"
   user_source       = "LDAP"
-  cloudtower_server = "yanzhen.dev-cloudtower.smartx.com"
+  cloudtower_server = "terraform.dev-cloudtower.smartx.com"
 }
-
-#data "cloudtower_datacenter" "all" {}
-#
-#output "org_id" {
-#  value = data.cloudtower_datacenters.all.datacenters[0].organization.id
-#}
 
 resource "cloudtower_datacenter" "idc" {
   name = "IDC"
@@ -25,4 +19,15 @@ resource "cloudtower_datacenter" "idc" {
 
 output "idc_datacenter" {
   value = cloudtower_datacenter.idc
+}
+
+resource "cloudtower_cluster" "df_1761" {
+  ip = "192.168.17.39"
+  username = "root"
+  password = "tower2022"
+  datacenter_id = cloudtower_datacenter.idc.id
+}
+
+output "df_1761_cluster" {
+  value = cloudtower_cluster.df_1761
 }
