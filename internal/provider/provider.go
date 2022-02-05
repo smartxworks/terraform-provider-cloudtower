@@ -55,10 +55,10 @@ func New(version string) func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"cloudtower_datacenters": dataSourceDatacenter(),
+				"cloudtower_datacenter": dataSourceDatacenter(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"datacenter_resource": resourceDatacenter(),
+				"cloudtower_datacenter": resourceDatacenter(),
 			},
 		}
 

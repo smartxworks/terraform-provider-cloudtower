@@ -13,8 +13,16 @@ provider "cloudtower" {
   cloudtower_server = "yanzhen.dev-cloudtower.smartx.com"
 }
 
-data "cloudtower_datacenters" "all" {}
+#data "cloudtower_datacenter" "all" {}
+#
+#output "org_id" {
+#  value = data.cloudtower_datacenters.all.datacenters[0].organization.id
+#}
 
-output "org_id" {
-  value = data.cloudtower_datacenters.all.datacenters[0].organization.id
+resource "cloudtower_datacenter" "idc" {
+  name = "IDC"
+}
+
+output "idc_datacenter" {
+  value = cloudtower_datacenter.idc
 }

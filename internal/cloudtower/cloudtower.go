@@ -31,6 +31,7 @@ type Client struct {
 	passwd   string
 	source   models.UserSource
 	token    string
+	OrgId    string
 	Api      *apiclient.AtTowerOperationAPI
 }
 
@@ -51,12 +52,20 @@ func NewClient(server string, username string, passwd string, source models.User
 	bearerTokenAuth := httptransport.BearerToken(*loginResp.Payload.Data.Token)
 	transport.DefaultAuthentication = bearerTokenAuth
 	api = apiclient.New(transport, strfmt.Default)
+
+	gop := operations.NewGetOrganizationsParams()
+	orgs, err := api.Operations.GetOrganizations(gop)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Client{
 		server:   server,
 		username: username,
 		passwd:   passwd,
 		source:   source,
 		token:    *loginResp.Payload.Data.Token,
+		OrgId:    *orgs.Payload[0].ID,
 		Api:      api,
 	}, nil
 }
