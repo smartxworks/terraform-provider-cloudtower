@@ -2,7 +2,9 @@ package cloudtower
 
 import (
 	apiclient "github.com/Yuyz0112/cloudtower-go-sdk/client"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/operations"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/organization"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/task"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/user"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
@@ -32,20 +34,20 @@ type Client struct {
 	source   models.UserSource
 	token    string
 	OrgId    string
-	Api      *apiclient.AtTowerOperationAPI
+	Api      *apiclient.CloudTowerAPIs
 }
 
 func NewClient(server string, username string, passwd string, source models.UserSource) (*Client, error) {
 	transport := httptransport.New(server, "/v2/api", []string{"http"})
 	transport.Transport = SetUserAgent(transport.Transport, "terraform-provider-cloudtower")
 	api := apiclient.New(transport, strfmt.Default)
-	loginParams := operations.NewLoginParams()
+	loginParams := user.NewLoginParams()
 	loginParams.RequestBody = &models.LoginInput{
 		Username: StrPtr(username),
 		Password: StrPtr(passwd),
 		Source:   &source,
 	}
-	loginResp, err := api.Operations.Login(loginParams)
+	loginResp, err := api.User.Login(loginParams)
 	if err != nil {
 		return nil, err
 	}
@@ -53,8 +55,8 @@ func NewClient(server string, username string, passwd string, source models.User
 	transport.DefaultAuthentication = bearerTokenAuth
 	api = apiclient.New(transport, strfmt.Default)
 
-	gop := operations.NewGetOrganizationsParams()
-	orgs, err := api.Operations.GetOrganizations(gop)
+	gop := organization.NewGetOrganizationsParams()
+	orgs, err := api.Organization.GetOrganizations(gop)
 	if err != nil {
 		return nil, err
 	}
@@ -70,18 +72,18 @@ func NewClient(server string, username string, passwd string, source models.User
 	}, nil
 }
 
-func (c *Client) WaitTasksFinish(taskIds []string) (*operations.GetTasksOK, error) {
+func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
 	if len(taskIds) == 0 {
-		return operations.NewGetTasksOK(), nil
+		return task.NewGetTasksOK(), nil
 	}
-	tasksParams := operations.NewGetTasksParams()
+	tasksParams := task.NewGetTasksParams()
 	tasksParams.RequestBody = &models.GetTasksRequestBody{
 		Where: &models.TaskWhereInput{
 			IDIn: taskIds,
 		},
 	}
 	for {
-		tasksResp, err := c.Api.Operations.GetTasks(tasksParams)
+		tasksResp, err := c.Api.Task.GetTasks(tasksParams)
 		if err != nil {
 			return nil, err
 		}

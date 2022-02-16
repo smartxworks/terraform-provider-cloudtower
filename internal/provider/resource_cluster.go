@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/operations"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/cluster"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 
@@ -51,7 +51,7 @@ func resourceCluster() *schema.Resource {
 
 func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	ccp := operations.NewConnectClusterParams()
+	ccp := cluster.NewConnectClusterParams()
 	username := d.Get("username").(string)
 	password := d.Get("password").(string)
 	ip := d.Get("ip").(string)
@@ -62,7 +62,7 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 		Password:     &password,
 		DatacenterID: datacenterId,
 	}}
-	clusters, err := ct.Api.Operations.ConnectCluster(ccp)
+	clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -77,13 +77,13 @@ func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta inter
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
-	gcp := operations.NewGetClustersParams()
+	gcp := cluster.NewGetClustersParams()
 	gcp.RequestBody = &models.GetClustersRequestBody{
 		Where: &models.ClusterWhereInput{
 			ID: &id,
 		},
 	}
-	clusters, err := ct.Api.Operations.GetClusters(gcp)
+	clusters, err := ct.Api.Cluster.GetClusters(gcp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -100,7 +100,7 @@ func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta inter
 
 func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	ucp := operations.NewUpdateClusterParams()
+	ucp := cluster.NewUpdateClusterParams()
 	username := d.Get("username").(string)
 	password := d.Get("password").(string)
 	ip := d.Get("ip").(string)
@@ -117,7 +117,7 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 			DatacenterID: datacenterId,
 		},
 	}
-	clusters, err := ct.Api.Operations.UpdateCluster(ucp)
+	clusters, err := ct.Api.Cluster.UpdateCluster(ucp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -129,14 +129,14 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-	dcp := operations.NewDeleteClusterParams()
+	dcp := cluster.NewDeleteClusterParams()
 	id := d.Id()
 	dcp.RequestBody = &models.ClusterDeletionParams{
 		Where: &models.ClusterWhereInput{
 			ID: &id,
 		},
 	}
-	clusters, err := ct.Api.Operations.DeleteCluster(dcp)
+	clusters, err := ct.Api.Cluster.DeleteCluster(dcp)
 	if err != nil {
 		return diag.FromErr(err)
 	}

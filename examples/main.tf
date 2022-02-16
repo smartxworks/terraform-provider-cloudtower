@@ -36,11 +36,11 @@ resource "cloudtower_vm" "tf_test" {
   name                = "yanzhen-tf-test"
   description         = "managed by terraform"
   cluster_id          = cloudtower_cluster.df_1761.id
-  vcpu                = 8
-  memory              = 16 * 1024 * 1024 * 1024
+  vcpu                = 4
+  memory              = 8 * 1024 * 1024 * 1024
   ha                  = true
   firmware            = "BIOS"
-  status              = "STOPPED"
+  status              = "RUNNING"
   force_status_change = true
 
   disk {
@@ -48,9 +48,9 @@ resource "cloudtower_vm" "tf_test" {
     bus  = "VIRTIO"
 
     vm_volume {
-      storage_policy = "REPLICA_3_THIN_PROVISION"
+      storage_policy = "REPLICA_2_THIN_PROVISION"
       name           = "v1"
-      size           = 10 * 1024 * 1024 * 1024
+      size           = 1 * 1024 * 1024 * 1024
     }
   }
 
@@ -59,7 +59,7 @@ resource "cloudtower_vm" "tf_test" {
   }
 
   nic {
-    vlan_id = "ckza02ro63zlr0926bpf7saz6"
+    vlan_id = "ckzmsi7i25k2c0926bx3w5xwy"
   }
 }
 

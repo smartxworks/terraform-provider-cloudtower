@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/operations"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/datacenter"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 
@@ -72,13 +72,13 @@ func resourceDatacenter() *schema.Resource {
 
 func resourceDatacenterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	cdp := operations.NewCreateDatacenterParams()
+	cdp := datacenter.NewCreateDatacenterParams()
 	name := d.Get("name").(string)
 	cdp.RequestBody = []*models.DatacenterCreationParams{&models.DatacenterCreationParams{
 		Name:           &name,
 		OrganizationID: &ct.OrgId,
 	}}
-	datacenters, err := ct.Api.Operations.CreateDatacenter(cdp)
+	datacenters, err := ct.Api.Datacenter.CreateDatacenter(cdp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -92,13 +92,13 @@ func resourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta in
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
-	gdp := operations.NewGetDatacentersParams()
+	gdp := datacenter.NewGetDatacentersParams()
 	gdp.RequestBody = &models.GetDatacentersRequestBody{
 		Where: &models.DatacenterWhereInput{
 			ID: &id,
 		},
 	}
-	datacenters, err := ct.Api.Operations.GetDatacenters(gdp)
+	datacenters, err := ct.Api.Datacenter.GetDatacenters(gdp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -115,7 +115,7 @@ func resourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta in
 
 func resourceDatacenterUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	udp := operations.NewUpdateDatacenterParams()
+	udp := datacenter.NewUpdateDatacenterParams()
 	name := d.Get("name").(string)
 	id := d.Id()
 	udp.RequestBody = &models.DatacenterUpdationParams{
@@ -126,7 +126,7 @@ func resourceDatacenterUpdate(ctx context.Context, d *schema.ResourceData, meta 
 			Name: name,
 		},
 	}
-	_, err := ct.Api.Operations.UpdateDatacenter(udp)
+	_, err := ct.Api.Datacenter.UpdateDatacenter(udp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -137,14 +137,14 @@ func resourceDatacenterUpdate(ctx context.Context, d *schema.ResourceData, meta 
 func resourceDatacenterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-	ddp := operations.NewDeleteDatacenterParams()
+	ddp := datacenter.NewDeleteDatacenterParams()
 	id := d.Id()
 	ddp.RequestBody = &models.DatacenterDeletionParams{
 		Where: &models.DatacenterWhereInput{
 			ID: &id,
 		},
 	}
-	_, err := ct.Api.Operations.DeleteDatacenter(ddp)
+	_, err := ct.Api.Datacenter.DeleteDatacenter(ddp)
 	if err != nil {
 		return diag.FromErr(err)
 	}

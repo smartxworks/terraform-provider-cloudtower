@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/operations"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
@@ -217,13 +217,13 @@ type VmDiskVmVolume struct {
 }
 
 type VmNic struct {
-	models.VMNicParamsItems0
+	models.VMNicParams
 	VlanId string `json:"vlan_id"`
 }
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	cvp := operations.NewCreateVMParams()
+	cvp := vm.NewCreateVMParams()
 	basic, err := expandVmBasicConfig(d)
 	if err != nil {
 		return diag.FromErr(err)
@@ -258,7 +258,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	var cdRoms []*models.VMCdRomParamsItems0
+	var cdRoms []*models.VMCdRomParams
 	bytes, err = json.Marshal(d.Get("cd_rom"))
 	if err != nil {
 		return diag.FromErr(err)
@@ -276,9 +276,9 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	var vmNics []*models.VMNicParamsItems0
+	var vmNics []*models.VMNicParams
 	for _, nic := range nics {
-		vmNics = append(vmNics, &models.VMNicParamsItems0{
+		vmNics = append(vmNics, &models.VMNicParams{
 			ConnectVlanID: &nic.VlanId,
 			Enabled:       nic.Enabled,
 			Gateway:       nic.Gateway,
@@ -289,29 +289,29 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 			SubnetMask:    nic.SubnetMask,
 		})
 	}
-	var mountDisks []*models.MountDisksParamsItems0
-	var mountNewCreateDisks []*models.MountNewCreateDisksParamsItems0
+	mountDisks := make([]*models.MountDisksParams, 0)
+	var mountNewCreateDisks []*models.MountNewCreateDisksParams
 	for _, disk := range disks {
-		fBoot := float64(disk.Boot)
+		boot := int32(disk.Boot)
 		if *disk.VmVolumeId != "" {
-			mountDisks = append(mountDisks, &models.MountDisksParamsItems0{
-				Boot:       &fBoot,
+			mountDisks = append(mountDisks, &models.MountDisksParams{
+				Boot:       &boot,
 				Bus:        &disk.Bus,
 				VMVolumeID: disk.VmVolumeId,
-				Index:      &fBoot,
+				Index:      &boot,
 			})
 		} else if disk.VmVolume != nil && len(*disk.VmVolume) == 1 {
 			volume := *disk.VmVolume
-			mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParamsItems0{
-				Boot: &fBoot,
+			mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParams{
+				Boot: &boot,
 				Bus:  &disk.Bus,
-				VMVolume: &models.MountNewCreateDisksParamsItems0VMVolume{
+				VMVolume: &models.MountNewCreateDisksParamsVMVolume{
 					ElfStoragePolicy: &volume[0].StoragePolicy,
 					Name:             &volume[0].Name,
 					Size:             &volume[0].Size,
 					Path:             *volume[0].Path,
 				},
-				Index: fBoot,
+				Index: boot,
 			})
 		}
 	}
@@ -336,7 +336,9 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		},
 		VMNics: vmNics,
 	}}
-	vms, err := ct.Api.Operations.CreateVM(cvp)
+	//str, err := json.Marshal(cvp.RequestBody)
+	//return diag.Errorf(string(str))
+	vms, err := ct.Api.VM.CreateVM(cvp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -354,13 +356,13 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
-	gcp := operations.NewGetVmsParams()
+	gcp := vm.NewGetVmsParams()
 	gcp.RequestBody = &models.GetVmsRequestBody{
 		Where: &models.VMWhereInput{
 			ID: &id,
 		},
 	}
-	vms, err := ct.Api.Operations.GetVms(gcp)
+	vms, err := ct.Api.VM.GetVms(gcp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -387,7 +389,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		uvp := operations.NewUpdateVMParams()
+		uvp := vm.NewUpdateVMParams()
 		uvp.RequestBody = &models.VMUpdateParams{
 			Where: &models.VMWhereInput{
 				ID: &id,
@@ -402,7 +404,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				CPUSockets:  *basic.CpuSockets,
 			},
 		}
-		vms, err := ct.Api.Operations.UpdateVM(uvp)
+		vms, err := ct.Api.VM.UpdateVM(uvp)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -423,7 +425,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		switch status.Status {
 		case models.VMStatusRUNNING:
-			uvp := operations.NewStartVMParams()
+			uvp := vm.NewStartVMParams()
 			uvp.RequestBody = &models.VMStartParams{
 				Where: &models.VMWhereInput{
 					ID: &id,
@@ -432,7 +434,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					HostID: &basic.HostId,
 				},
 			}
-			vms, err := ct.Api.Operations.StartVM(uvp)
+			vms, err := ct.Api.VM.StartVM(uvp)
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -442,13 +444,13 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		case models.VMStatusSTOPPED:
 			if status.Force {
-				uvp := operations.NewForceShutDownVMParams()
+				uvp := vm.NewForceShutDownVMParams()
 				uvp.RequestBody = &models.VMOperateParams{
 					Where: &models.VMWhereInput{
 						ID: &id,
 					},
 				}
-				vms, err := ct.Api.Operations.ForceShutDownVM(uvp)
+				vms, err := ct.Api.VM.ForceShutDownVM(uvp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
@@ -457,13 +459,13 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					return diag.FromErr(err)
 				}
 			} else {
-				uvp := operations.NewShutDownVMParams()
+				uvp := vm.NewShutDownVMParams()
 				uvp.RequestBody = &models.VMOperateParams{
 					Where: &models.VMWhereInput{
 						ID: &id,
 					},
 				}
-				vms, err := ct.Api.Operations.ShutDownVM(uvp)
+				vms, err := ct.Api.VM.ShutDownVM(uvp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
@@ -473,13 +475,13 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				}
 			}
 		case models.VMStatusSUSPENDED:
-			uvp := operations.NewSuspendVMParams()
+			uvp := vm.NewSuspendVMParams()
 			uvp.RequestBody = &models.VMOperateParams{
 				Where: &models.VMWhereInput{
 					ID: &id,
 				},
 			}
-			vms, err := ct.Api.Operations.SuspendVM(uvp)
+			vms, err := ct.Api.VM.SuspendVM(uvp)
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -496,14 +498,14 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-	dvp := operations.NewDeleteVMParams()
+	dvp := vm.NewDeleteVMParams()
 	id := d.Id()
 	dvp.RequestBody = &models.VMOperateParams{
 		Where: &models.VMWhereInput{
 			ID: &id,
 		},
 	}
-	vms, err := ct.Api.Operations.DeleteVM(dvp)
+	vms, err := ct.Api.VM.DeleteVM(dvp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -535,40 +537,40 @@ func waitVmTasksFinish(ct *cloudtower.Client, vms []*models.WithTaskVM) error {
 
 type VmBasicConfig struct {
 	Name        string
-	Vcpu        float64
+	Vcpu        int32
 	Memory      float64
 	Ha          bool
 	HostId      string
 	FolderId    string
 	Description string
-	CpuCores    *float64
-	CpuSockets  *float64
+	CpuCores    *int32
+	CpuSockets  *int32
 }
 
 func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 	name := d.Get("name").(string)
 	_vcpu := d.Get("vcpu").(int)
-	vcpu := float64(_vcpu)
+	vcpu := int32(_vcpu)
 	memory := d.Get("memory").(float64)
 	ha := d.Get("ha").(bool)
 	hostId := d.Get("host_id").(string)
 	folderId := d.Get("folder_id").(string)
 	description := d.Get("description").(string)
-	var cpuCores *float64
+	var cpuCores *int32
 	if _cpuCores := d.Get("cpu_cores").(int); _cpuCores != 0 {
-		f := float64(_cpuCores)
-		cpuCores = &f
+		i := int32(_cpuCores)
+		cpuCores = &i
 	} else {
-		f := float64(1)
-		cpuCores = &f
+		i := int32(1)
+		cpuCores = &i
 	}
-	var cpuSockets *float64
+	var cpuSockets *int32
 	if _cpuSockets := d.Get("cpu_sockets").(int); _cpuSockets != 0 {
-		f := float64(_cpuSockets)
-		cpuSockets = &f
+		i := int32(_cpuSockets)
+		cpuSockets = &i
 	} else {
-		f := vcpu / *cpuCores
-		cpuSockets = &f
+		i := vcpu / *cpuCores
+		cpuSockets = &i
 	}
 
 	return &VmBasicConfig{

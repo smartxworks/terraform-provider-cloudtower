@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/operations"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/datacenter"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"strconv"
 	"time"
@@ -81,8 +81,8 @@ func dataSourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	ct := meta.(*cloudtower.Client)
 
-	gdp := operations.NewGetDatacentersParams()
-	datacenters, err := ct.Api.Operations.GetDatacenters(gdp)
+	gdp := datacenter.NewGetDatacentersParams()
+	datacenters, err := ct.Api.Datacenter.GetDatacenters(gdp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -95,11 +95,6 @@ func dataSourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta 
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	//panic(string(str))
-	//a := make([]map[string]interface{}, 0)
-	//a = append(a, map[string]interface{}{
-	//	"id": output[0]["id"],
-	//})
 	err = d.Set("datacenters", output)
 	if err != nil {
 		return diag.FromErr(err)
