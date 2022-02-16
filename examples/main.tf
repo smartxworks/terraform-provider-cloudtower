@@ -13,7 +13,7 @@ provider "cloudtower" {
   cloudtower_server = "terraform.dev-cloudtower.smartx.com"
 }
 
-data "cloudtower_datacenter" "all" {
+data "cloudtower_datacenter" "sample" {
   name_contains = "new"
 }
 
@@ -21,13 +21,18 @@ resource "cloudtower_cluster" "df_1761" {
   ip            = "192.168.17.39"
   username      = "root"
   password      = "tower2022"
-  datacenter_id = data.cloudtower_datacenter.all.datacenters[0].id
+  datacenter_id = data.cloudtower_datacenter.sample.datacenters[0].id
 }
 
-data "cloudtower_cluster" "all" {
+data "cloudtower_cluster" "sample" {
   name_contains = "-"
 }
 
+data "cloudtower_vlan" "sample" {
+  name = "default"
+  type = "VM"
+}
+
 output "test" {
-  value = data.cloudtower_cluster.all.clusters
+  value = data.cloudtower_vlan.sample.vlans
 }
