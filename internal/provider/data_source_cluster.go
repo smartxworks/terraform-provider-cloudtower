@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/datacenter"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/cluster"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"strconv"
@@ -12,11 +12,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func dataSourceDatacenter() *schema.Resource {
+func dataSourceCluster() *schema.Resource {
 	return &schema.Resource{
-		Description: "CloudTower datacenter data source.",
+		Description: "CloudTower cluster data source.",
 
-		ReadContext: dataSourceDatacenterRead,
+		ReadContext: dataSourceClusterRead,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -27,7 +27,7 @@ func dataSourceDatacenter() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"datacenters": {
+			"clusters": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
@@ -47,33 +47,33 @@ func dataSourceDatacenter() *schema.Resource {
 	}
 }
 
-func dataSourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceClusterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	ct := meta.(*cloudtower.Client)
 
-	gdp := datacenter.NewGetDatacentersParams()
-	gdp.RequestBody = &models.GetDatacentersRequestBody{
-		Where: &models.DatacenterWhereInput{},
+	gp := cluster.NewGetClustersParams()
+	gp.RequestBody = &models.GetClustersRequestBody{
+		Where: &models.ClusterWhereInput{},
 	}
 	if name := d.Get("name").(string); name != "" {
-		gdp.RequestBody.Where.Name = &name
+		gp.RequestBody.Where.Name = &name
 	}
 	if nameContains := d.Get("name_contains").(string); nameContains != "" {
-		gdp.RequestBody.Where.NameContains = &nameContains
+		gp.RequestBody.Where.NameContains = &nameContains
 	}
-	datacenters, err := ct.Api.Datacenter.GetDatacenters(gdp)
+	clusters, err := ct.Api.Cluster.GetClusters(gp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	output := make([]map[string]interface{}, 0)
-	for _, d := range datacenters.Payload {
+	for _, d := range clusters.Payload {
 		output = append(output, map[string]interface{}{
 			"id":   d.ID,
 			"name": d.Name,
 		})
 	}
-	err = d.Set("datacenters", output)
+	err = d.Set("clusters", output)
 	if err != nil {
 		return diag.FromErr(err)
 	}

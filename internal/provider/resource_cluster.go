@@ -12,7 +12,6 @@ import (
 
 func resourceCluster() *schema.Resource {
 	return &schema.Resource{
-		// This description is used by the documentation generator and the language server.
 		Description: "CloudTower cluster resource.",
 
 		CreateContext: resourceClusterCreate,

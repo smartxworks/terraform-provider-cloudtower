@@ -56,6 +56,7 @@ func New(version string) func() *schema.Provider {
 			},
 			DataSourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter": dataSourceDatacenter(),
+				"cloudtower_cluster":    dataSourceCluster(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter": resourceDatacenter(),

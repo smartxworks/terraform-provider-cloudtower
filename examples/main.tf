@@ -13,56 +13,21 @@ provider "cloudtower" {
   cloudtower_server = "terraform.dev-cloudtower.smartx.com"
 }
 
-resource "cloudtower_datacenter" "idc" {
-  name = "IDC"
-}
-
-output "idc_datacenter" {
-  value = cloudtower_datacenter.idc
+data "cloudtower_datacenter" "all" {
+  name_contains = "new"
 }
 
 resource "cloudtower_cluster" "df_1761" {
   ip            = "192.168.17.39"
   username      = "root"
   password      = "tower2022"
-  datacenter_id = cloudtower_datacenter.idc.id
+  datacenter_id = data.cloudtower_datacenter.all.datacenters[0].id
 }
 
-output "df_1761_cluster" {
-  value = cloudtower_cluster.df_1761
+data "cloudtower_cluster" "all" {
+  name_contains = "-"
 }
 
-resource "cloudtower_vm" "tf_test" {
-  name                = "yanzhen-tf-test"
-  description         = "managed by terraform"
-  cluster_id          = cloudtower_cluster.df_1761.id
-  vcpu                = 4
-  memory              = 8 * 1024 * 1024 * 1024
-  ha                  = true
-  firmware            = "BIOS"
-  status              = "RUNNING"
-  force_status_change = true
-
-  disk {
-    boot = 1
-    bus  = "VIRTIO"
-
-    vm_volume {
-      storage_policy = "REPLICA_2_THIN_PROVISION"
-      name           = "v1"
-      size           = 1 * 1024 * 1024 * 1024
-    }
-  }
-
-  cd_rom {
-    boot = 2
-  }
-
-  nic {
-    vlan_id = "ckzmsi7i25k2c0926bx3w5xwy"
-  }
-}
-
-output "test_vm" {
-  value = cloudtower_vm.tf_test
+output "test" {
+  value = data.cloudtower_cluster.all.clusters
 }
