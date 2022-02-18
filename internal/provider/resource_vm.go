@@ -120,7 +120,7 @@ func resourceVm() *schema.Resource {
 							Type:     schema.TypeInt,
 							Required: true,
 						},
-						"elf_image_id": {
+						"iso_id": {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
@@ -216,6 +216,11 @@ type VmDiskVmVolume struct {
 	Path          *string                             `json:"path"`
 }
 
+type CdRom struct {
+	Boot  int32   `json:"boot"`
+	IsoId *string `json:"iso_id"`
+}
+
 type VmNic struct {
 	models.VMNicParams
 	VlanId string `json:"vlan_id"`
@@ -259,13 +264,18 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.FromErr(err)
 	}
 	var cdRoms []*models.VMCdRomParams
+	var _cdRoms []*CdRom
 	bytes, err = json.Marshal(d.Get("cd_rom"))
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	err = json.Unmarshal(bytes, &cdRoms)
-	for _, cdRom := range cdRoms {
-		cdRom.Index = cdRom.Boot
+	err = json.Unmarshal(bytes, &_cdRoms)
+	for _, cdRom := range _cdRoms {
+		cdRoms = append(cdRoms, &models.VMCdRomParams{
+			Boot:       &cdRom.Boot,
+			ElfImageID: *cdRom.IsoId,
+			Index:      &cdRom.Boot,
+		})
 	}
 	if err != nil {
 		return diag.FromErr(err)
@@ -374,6 +384,9 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 	if err = d.Set("host_id", vms.Payload[0].Host.ID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("status", vms.Payload[0].Status); err != nil {
 		return diag.FromErr(err)
 	}
 

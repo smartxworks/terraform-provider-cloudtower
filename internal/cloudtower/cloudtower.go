@@ -1,6 +1,7 @@
 package cloudtower
 
 import (
+	"errors"
 	apiclient "github.com/Yuyz0112/cloudtower-go-sdk/client"
 	"github.com/Yuyz0112/cloudtower-go-sdk/client/organization"
 	"github.com/Yuyz0112/cloudtower-go-sdk/client/task"
@@ -91,6 +92,9 @@ func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
 		for _, v := range tasksResp.Payload {
 			if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
 				allFinished = false
+			}
+			if *v.Status == models.TaskStatusFAILED {
+				return nil, errors.New(*v.ErrorMessage)
 			}
 		}
 		if !allFinished {

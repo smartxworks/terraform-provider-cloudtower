@@ -17,10 +17,6 @@ data "cloudtower_datacenter" "idc" {
   name = "idc"
 }
 
-output "test" {
-  value = data.cloudtower_datacenter.idc
-}
-
 resource "cloudtower_cluster" "c_1739" {
   ip            = "192.168.17.39"
   username      = "root"
@@ -47,7 +43,7 @@ resource "cloudtower_vm" "tf_test" {
   memory              = 8 * 1024 * 1024 * 1024
   ha                  = true
   firmware            = "BIOS"
-  status              = "RUNNING"
+  status              = "STOPPED"
   force_status_change = true
   disk {
     boot = 1

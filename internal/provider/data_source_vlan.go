@@ -97,11 +97,6 @@ func dataSourceVlanRead(ctx context.Context, d *schema.ResourceData, meta interf
 	return diags
 }
 
-type VlanConfig struct {
-	Status models.VMStatus
-	Force  bool
-}
-
 func expandVlanWhereInput(d *schema.ResourceData) (*models.VlanWhereInput, error) {
 	where := &models.VlanWhereInput{}
 	if name := d.Get("name").(string); name != "" {
@@ -130,7 +125,11 @@ func expandVlanWhereInput(d *schema.ResourceData) (*models.VlanWhereInput, error
 		}
 	}
 	if clusterId := d.Get("cluster_id").(string); clusterId != "" {
-		where.Vds.Cluster.ID = &clusterId
+		where.Vds = &models.VdsWhereInput{
+			Cluster: &models.ClusterWhereInput{
+				ID: &clusterId,
+			},
+		}
 	}
 	return where, nil
 }
