@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_nic"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"reflect"
 )
 
 func resourceVm() *schema.Resource {
@@ -60,6 +61,7 @@ func resourceVm() *schema.Resource {
 			"disk": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
@@ -78,6 +80,7 @@ func resourceVm() *schema.Resource {
 						"vm_volume": {
 							Type:     schema.TypeList,
 							Optional: true,
+							Computed: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -104,9 +107,18 @@ func resourceVm() *schema.Resource {
 									"path": {
 										Type:     schema.TypeString,
 										Optional: true,
+										Computed: true,
+									},
+									"id": {
+										Type:     schema.TypeString,
+										Computed: true,
 									},
 								},
 							},
+						},
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
 						},
 					},
 				},
@@ -114,6 +126,7 @@ func resourceVm() *schema.Resource {
 			"cd_rom": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
@@ -123,6 +136,11 @@ func resourceVm() *schema.Resource {
 						"iso_id": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
+						},
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
 						},
 					},
 				},
@@ -130,6 +148,7 @@ func resourceVm() *schema.Resource {
 			"nic": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"vlan_id": {
@@ -139,31 +158,46 @@ func resourceVm() *schema.Resource {
 						"enabled": {
 							Type:     schema.TypeBool,
 							Optional: true,
+							Computed: true,
 						},
 						"mirror": {
 							Type:     schema.TypeBool,
 							Optional: true,
+							Computed: true,
 						},
 						"model": {
 							Type:         schema.TypeString,
 							Optional:     true,
+							Computed:     true,
 							ValidateFunc: validation.StringInSlice([]string{"E1000", "SRIOV", "VIRTIO"}, false),
 						},
 						"mac_address": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 						},
 						"ip_address": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 						},
 						"subnet_mask": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 						},
 						"gateway": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
+						},
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"idx": {
+							Type:     schema.TypeInt,
+							Computed: true,
 						},
 					},
 				},
@@ -176,23 +210,28 @@ func resourceVm() *schema.Resource {
 			"folder_id": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 			},
 			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 			},
 			"guest_os_type": {
 				Type:         schema.TypeString,
 				Optional:     true,
+				Computed:     true,
 				ValidateFunc: validation.StringInSlice([]string{"LINUX", "WINDOWS", "UNKNOWN"}, false),
 			},
 			"cpu_cores": {
 				Type:     schema.TypeInt,
 				Optional: true,
+				Computed: true,
 			},
 			"cpu_sockets": {
 				Type:     schema.TypeInt,
 				Optional: true,
+				Computed: true,
 			},
 			"id": {
 				Type:     schema.TypeString,
@@ -223,7 +262,9 @@ type CdRom struct {
 
 type VmNic struct {
 	models.VMNicParams
-	VlanId string `json:"vlan_id"`
+	VlanId string  `json:"vlan_id"`
+	Id     *string `json:"id"`
+	Idx    *int    `json:"idx"`
 }
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -365,28 +406,40 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
 
-	id := d.Id()
-	gcp := vm.NewGetVmsParams()
-	gcp.RequestBody = &models.GetVmsRequestBody{
-		Where: &models.VMWhereInput{
-			ID: &id,
-		},
-	}
-	vms, err := ct.Api.VM.GetVms(gcp)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if len(vms.Payload) < 1 {
-		d.SetId("")
+	vm, diags := readVm(ctx, d, ct)
+	if diags != nil {
 		return diags
 	}
-	if err = d.Set("name", vms.Payload[0].Name); err != nil {
+	if err := d.Set("name", vm.Name); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("host_id", vms.Payload[0].Host.ID); err != nil {
+	if err := d.Set("host_id", vm.Host.ID); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("status", vms.Payload[0].Status); err != nil {
+	if err := d.Set("status", vm.Status); err != nil {
+		return diag.FromErr(err)
+	}
+
+	vmNics, diags := readVmNics(ctx, d, ct)
+	if diags != nil {
+		return diags
+	}
+	var nics []map[string]interface{}
+	for idx, n := range vmNics {
+		nics = append(nics, map[string]interface{}{
+			"vlan_id":     n.Vlan.ID,
+			"enabled":     n.Enabled,
+			"mirror":      n.Mirror,
+			"model":       n.Model,
+			"mac_address": n.MacAddress,
+			"ip_address":  n.IPAddress,
+			"subnet_mask": n.SubnetMask,
+			"gateway":     n.Gateway,
+			"id":          n.ID,
+			"idx":         idx,
+		})
+	}
+	if err := d.Set("nic", nics); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -505,6 +558,141 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
+	if d.HasChange("host_id") {
+		hostId := d.Get("host_id").(string)
+		mvp := vm.NewMigRateVMParams()
+		mvp.RequestBody = &models.VMMigrateParams{
+			Where: &models.VMWhereInput{
+				ID: &id,
+			},
+			Data: &models.VMMigrateParamsData{
+				HostID: &hostId,
+			},
+		}
+		vms, err := ct.Api.VM.MigRateVM(mvp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = waitVmTasksFinish(ct, vms.Payload)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("nic") {
+		vmNics, diags := readVmNics(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		curNicMap := make(map[string]*int, 0)
+		for idx, n := range vmNics {
+			curNicMap[*n.ID] = &idx
+		}
+		var nics []*VmNic
+		bytes, err := json.Marshal(d.Get("nic"))
+		err = json.Unmarshal(bytes, &nics)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		var adds []*models.VMNicParams
+		var removes []int32
+		for _, n := range nics {
+			if n.Id == nil || *n.Id == "" {
+				// new nic
+				adds = append(adds, &models.VMNicParams{
+					ConnectVlanID: &n.VlanId,
+					Enabled:       n.Enabled,
+					Gateway:       n.Gateway,
+					IPAddress:     n.IPAddress,
+					MacAddress:    n.MacAddress,
+					Mirror:        n.Mirror,
+					Model:         n.Model,
+					SubnetMask:    n.SubnetMask,
+				})
+			} else if curNicMap[*n.Id] != nil {
+				srcN := vmNics[*curNicMap[*n.Id]]
+				// mark consumed
+				delete(curNicMap, *n.Id)
+				if n.VlanId == derefAny(srcN.Vlan.ID, "") &&
+					n.Enabled == derefAny(srcN.Enabled, false) &&
+					n.Mirror == derefAny(srcN.Mirror, false) &&
+					n.Model == derefAny(*srcN.Model, "") {
+					continue
+				}
+				// update nic
+				idx := int32(*curNicMap[*n.Id])
+				p := vm.NewUpdateVMNicParams()
+				p.RequestBody = &models.VMUpdateNicParams{
+					Where: &models.VMWhereInput{
+						ID: &id,
+					},
+					Data: &models.VMUpdateNicParamsData{
+						ConnectVlanID: n.VlanId,
+						Enabled:       false,
+						Gateway:       n.Gateway,
+						IPAddress:     n.IPAddress,
+						MacAddress:    n.MacAddress,
+						Mirror:        n.Mirror,
+						Model:         n.Model,
+						SubnetMask:    n.SubnetMask,
+						NicID:         *n.Id,
+						NicIndex:      &idx,
+					},
+				}
+				vms, err := ct.Api.VM.UpdateVMNic(p)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				err = waitVmTasksFinish(ct, vms.Payload)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+			}
+		}
+		for _, v := range curNicMap {
+			removeIdx := int32(*v)
+			removes = append(removes, removeIdx)
+		}
+		if len(removes) > 0 {
+			p := vm.NewRemoveVMNicParams()
+			p.RequestBody = &models.VMRemoveNicParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMRemoveNicParamsData{
+					NicIndex: removes,
+				},
+			}
+			vms, err := ct.Api.VM.RemoveVMNic(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+		if len(adds) > 0 {
+			p := vm.NewAddVMNicParams()
+			p.RequestBody = &models.VMAddNicParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMAddNicParamsData{
+					VMNics: adds,
+				},
+			}
+			vms, err := ct.Api.VM.AddVMNic(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+
+	}
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -619,4 +807,54 @@ func expandVmStatusConfig(d *schema.ResourceData) (*VmStatusConfig, error) {
 		Status: status,
 		Force:  force,
 	}, nil
+}
+
+func readVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) (*models.VM, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	id := d.Id()
+	gcp := vm.NewGetVmsParams()
+	gcp.RequestBody = &models.GetVmsRequestBody{
+		Where: &models.VMWhereInput{
+			ID: &id,
+		},
+	}
+	vms, err := ct.Api.VM.GetVms(gcp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	if len(vms.Payload) < 1 {
+		d.SetId("")
+		return nil, diags
+	}
+	vm := vms.Payload[0]
+	return vm, nil
+}
+
+func readVmNics(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMNic, diag.Diagnostics) {
+	id := d.Id()
+	gp := vm_nic.NewGetVMNicsParams()
+	gp.RequestBody = &models.GetVMNicsRequestBody{
+		Where: &models.VMNicWhereInput{
+			VM: &models.VMWhereInput{
+				ID: &id,
+			},
+		},
+	}
+	vmNics, err := ct.Api.VMNic.GetVMNics(gp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return vmNics.Payload, nil
+}
+
+func derefAny(v interface{}, fallback interface{}) interface{} {
+	ptr := reflect.ValueOf(v)
+	if ptr.Kind() == reflect.Ptr {
+		if ptr.IsNil() {
+			return fallback
+		}
+		val := ptr.Elem().Interface()
+		return val
+	}
+	return v
 }

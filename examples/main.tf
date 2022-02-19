@@ -25,19 +25,19 @@ resource "cloudtower_cluster" "c_1739" {
 }
 
 data "cloudtower_vlan" "vm_vlan" {
-  name = "default"
-  type = "VM"
+  name       = "default"
+  type       = "VM"
   cluster_id = cloudtower_cluster.c_1739.id
 }
 
 data "cloudtower_iso" "ubuntu" {
   name_contains = "ubuntu-18"
-  cluster_id = cloudtower_cluster.c_1739.id
+  cluster_id    = cloudtower_cluster.c_1739.id
 }
 
 resource "cloudtower_vm" "tf_test" {
   name                = "yanzhen-tf-test"
-  description         = "managed by terraform ~~"
+  description         = "managed by terraform"
   cluster_id          = cloudtower_cluster.c_1739.id
   vcpu                = 4
   memory              = 8 * 1024 * 1024 * 1024
@@ -45,6 +45,7 @@ resource "cloudtower_vm" "tf_test" {
   firmware            = "BIOS"
   status              = "STOPPED"
   force_status_change = true
+
   disk {
     boot = 1
     bus  = "VIRTIO"
@@ -54,15 +55,17 @@ resource "cloudtower_vm" "tf_test" {
       size           = 10 * 1024 * 1024 * 1024
     }
   }
+
   cd_rom {
     boot   = 2
     iso_id = data.cloudtower_iso.ubuntu.isos[0].id
   }
+
   nic {
     vlan_id = data.cloudtower_vlan.vm_vlan.vlans[0].id
   }
 }
 
-output "test_vm" {
-  value = cloudtower_vm.tf_test
-}
+#output "test_vm" {
+#  value = cloudtower_vm.tf_test
+#}

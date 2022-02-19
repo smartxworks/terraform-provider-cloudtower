@@ -50,10 +50,6 @@ github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tN
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214053458-15775e76daa5 h1:vUh6fYDSkKgW3IeWw5u4jE75avxCpsP2uRdLTuKGvO8=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214053458-15775e76daa5/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214093959-e3c579e1a5ff h1:NdcqYP6Lt2t4MFFShS/YvxYVkgToc8tLmp9DrIYLpI4=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214093959-e3c579e1a5ff/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
 github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214135435-15b8e27448d9 h1:0+DDWtvnJ8SAcm4OVMYAz2xftU9l621VpPGGpy5/Fps=
 github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214135435-15b8e27448d9/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
 github.com/acomagu/bufpipe v1.0.3 h1:fxAGrHZTgQ9w5QqVItgzwj235/uYZYgbXitB+dLupOk=
