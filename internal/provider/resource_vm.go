@@ -137,8 +137,7 @@ func resourceVm() *schema.Resource {
 						},
 						"iso_id": {
 							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Required: true,
 						},
 						"id": {
 							Type:     schema.TypeString,
@@ -244,6 +243,7 @@ func resourceVm() *schema.Resource {
 }
 
 type VmDisk struct {
+	Id         *string            `json:"id"`
 	Boot       int                `json:"boot"`
 	Bus        models.Bus         `json:"bus"`
 	VmVolumeId *string            `json:"vm_volume_id"`
@@ -258,6 +258,7 @@ type VmDiskVmVolume struct {
 }
 
 type CdRom struct {
+	Id    *string `json:"id"`
 	Boot  int32   `json:"boot"`
 	IsoId *string `json:"iso_id"`
 }
@@ -474,6 +475,25 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 
+	cdRomsData, diags := readCdRoms(ctx, d, ct)
+	if diags != nil {
+		return diags
+	}
+	var cdRoms []map[string]interface{}
+	for _, c := range cdRomsData {
+		cdRom := map[string]interface{}{
+			"id":   c.ID,
+			"boot": c.Boot,
+		}
+		if c.ElfImage != nil {
+			cdRom["iso_id"] = c.ElfImage.ID
+		}
+		cdRoms = append(cdRoms, cdRom)
+	}
+	if err := d.Set("cd_rom", cdRoms); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return diags
 }
 
@@ -617,10 +637,14 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		curNicMap := make(map[string]*int, 0)
 		for idx, n := range vmNics {
-			curNicMap[*n.ID] = &idx
+			_idx := idx
+			curNicMap[*n.ID] = &_idx
 		}
 		var nics []*VmNic
 		bytes, err := json.Marshal(d.Get("nic"))
+		if err != nil {
+			return diag.FromErr(err)
+		}
 		err = json.Unmarshal(bytes, &nics)
 		if err != nil {
 			return diag.FromErr(err)
@@ -723,6 +747,114 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		}
 
+	}
+
+	if d.HasChange("cd_rom") {
+		cdRoms, diags := readCdRoms(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		curMap := make(map[string]*int, 0)
+		for idx, v := range cdRoms {
+			_idx := idx
+			curMap[*v.ID] = &_idx
+		}
+
+		var cdRomsData []*CdRom
+		bytes, err := json.Marshal(d.Get("cd_rom"))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &cdRomsData)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+
+		var adds []*models.VMCdRomParams
+		var removeIds []string
+		for _, v := range cdRomsData {
+			if v.Id == nil || *v.Id == "" {
+				// new cd-rom
+				adds = append(adds, &models.VMCdRomParams{
+					Boot:       &v.Boot,
+					ElfImageID: *v.IsoId,
+					Index:      &v.Boot,
+				})
+			} else if curMap[*v.Id] != nil {
+				srcV := cdRoms[*curMap[*v.Id]]
+				// mark consumed
+				delete(curMap, *v.Id)
+				var srcIsoId interface{}
+				if srcV.ElfImage == nil {
+					srcIsoId = ""
+				} else {
+					srcIsoId = derefAny(srcV.ElfImage.ID, "")
+				}
+				if *v.IsoId == srcIsoId {
+					continue
+				}
+				// update cd-rom
+				p := vm.NewUpdateVMDiskParams()
+				p.RequestBody = &models.VMUpdateDiskParams{
+					Where: &models.VMWhereInput{
+						ID: &id,
+					},
+					Data: &models.VMUpdateDiskParamsData{
+						VMDiskID:   v.Id,
+						ElfImageID: v.IsoId,
+					},
+				}
+				vms, err := ct.Api.VM.UpdateVMDisk(p)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				err = waitVmTasksFinish(ct, vms.Payload)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+			}
+		}
+		for k, _ := range curMap {
+			removeIds = append(removeIds, k)
+		}
+		if len(removeIds) > 0 {
+			p := vm.NewRemoveVMCdRomParams()
+			p.RequestBody = &models.VMRemoveCdRomParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMRemoveCdRomParamsData{
+					CdRomIds: removeIds,
+				},
+			}
+			vms, err := ct.Api.VM.RemoveVMCdRom(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+		if len(adds) > 0 {
+			p := vm.NewAddVMCdRomParams()
+			p.RequestBody = &models.VMAddCdRomParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMAddCdRomParamsData{
+					VMCdRoms: adds,
+				},
+			}
+			vms, err := ct.Api.VM.AddVMCdRom(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
 	}
 	return resourceVmRead(ctx, d, meta)
 }
@@ -903,7 +1035,7 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		},
 	}
 	vmVolumes, err := ct.Api.VMVolume.GetVMVolumes(gp2)
-	vmVolumeMap := make(map[string]*models.VMVolume)
+	vmVolumeMap := make(map[string]*models.VMVolume, 0)
 	for _, v := range vmVolumes.Payload {
 		vmVolumeMap[*v.ID] = v
 	}
@@ -917,6 +1049,26 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		return nil, nil, diag.FromErr(err)
 	}
 	return vmDisks.Payload, vmVolumesSlice, nil
+}
+
+func readCdRoms(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMDisk, diag.Diagnostics) {
+	id := d.Id()
+	gp := vm_disk.NewGetVMDisksParams()
+	typePt := models.VMDiskTypeCDROM
+	gp.RequestBody = &models.GetVMDisksRequestBody{
+		Where: &models.VMDiskWhereInput{
+			Type: &typePt,
+			VM: &models.VMWhereInput{
+				ID: &id,
+			},
+		},
+	}
+	cdRoms, err := ct.Api.VMDisk.GetVMDisks(gp)
+
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return cdRoms.Payload, nil
 }
 
 func derefAny(v interface{}, fallback interface{}) interface{} {

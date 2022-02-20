@@ -31,7 +31,7 @@ data "cloudtower_vlan" "vm_vlan" {
 }
 
 data "cloudtower_iso" "ubuntu" {
-  name_contains = "ubuntu-18"
+  name_contains = "ubuntu"
   cluster_id    = cloudtower_cluster.c_1739.id
 }
 
