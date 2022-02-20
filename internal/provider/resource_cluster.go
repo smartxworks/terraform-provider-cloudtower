@@ -20,29 +20,35 @@ func resourceCluster() *schema.Resource {
 		DeleteContext: resourceClusterDelete,
 
 		Schema: map[string]*schema.Schema{
-			"ip": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
+			"ip": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "cluster's IP",
 			},
-			"username": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
+			"username": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "cluster's username",
 			},
-			"password": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
+			"password": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "cluster's password",
 			},
-			"datacenter_id": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
+			"datacenter_id": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "the id of the datacenter this cluster belongs to",
 			},
-			"id": &schema.Schema{
-				Type:     schema.TypeString,
-				Computed: true,
+			"id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "cluster's id",
 			},
-			"name": &schema.Schema{
-				Type:     schema.TypeString,
-				Computed: true,
+			"name": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "cluster's name",
 			},
 		},
 	}
@@ -55,7 +61,7 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 	password := d.Get("password").(string)
 	ip := d.Get("ip").(string)
 	datacenterId := d.Get("datacenter_id").(string)
-	ccp.RequestBody = []*models.ClusterCreationParams{&models.ClusterCreationParams{
+	ccp.RequestBody = []*models.ClusterCreationParams{{
 		IP:           &ip,
 		Username:     &username,
 		Password:     &password,
@@ -66,7 +72,10 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.FromErr(err)
 	}
 	d.SetId(*clusters.Payload[0].Data.ID)
-	waitClusterTasksFinish(ct, clusters.Payload)
+	err = waitClusterTasksFinish(ct, clusters.Payload)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	return resourceClusterRead(ctx, d, meta)
 }
@@ -120,7 +129,10 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	waitClusterTasksFinish(ct, clusters.Payload)
+	err = waitClusterTasksFinish(ct, clusters.Payload)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	return resourceClusterRead(ctx, d, meta)
 }
@@ -140,23 +152,27 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.FromErr(err)
 	}
 	taskIds := make([]string, 0)
-	for _, cluster := range clusters.Payload {
-		if cluster.TaskID != nil {
-			taskIds = append(taskIds, *cluster.TaskID)
+	for _, c := range clusters.Payload {
+		if c.TaskID != nil {
+			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	ct.WaitTasksFinish(taskIds)
+	_, err = ct.WaitTasksFinish(taskIds)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	d.SetId("")
 	return diags
 }
 
-func waitClusterTasksFinish(ct *cloudtower.Client, clusters []*models.WithTaskCluster) {
+func waitClusterTasksFinish(ct *cloudtower.Client, clusters []*models.WithTaskCluster) error {
 	taskIds := make([]string, 0)
-	for _, cluster := range clusters {
-		if cluster.TaskID != nil {
-			taskIds = append(taskIds, *cluster.TaskID)
+	for _, c := range clusters {
+		if c.TaskID != nil {
+			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	ct.WaitTasksFinish(taskIds)
+	_, err := ct.WaitTasksFinish(taskIds)
+	return err
 }

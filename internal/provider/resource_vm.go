@@ -27,67 +27,81 @@ func resourceVm() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "VM's name",
 			},
 			"cluster_id": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "VM's cluster id",
 			},
 			"vcpu": {
-				Type:     schema.TypeInt,
-				Required: true,
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: "VM's vcpu",
 			},
 			"memory": {
-				Type:     schema.TypeFloat,
-				Required: true,
+				Type:        schema.TypeFloat,
+				Required:    true,
+				Description: "VM's memory, in the unit of byte",
 			},
 			"ha": {
-				Type:     schema.TypeBool,
-				Required: true,
+				Type:        schema.TypeBool,
+				Required:    true,
+				Description: "whether VM is HA or not",
 			},
 			"firmware": {
 				Type:         schema.TypeString,
 				Required:     true,
+				Description:  "VM's firmware",
 				ValidateFunc: validation.StringInSlice([]string{"BIOS", "UEFI"}, false),
 			},
 			"status": {
 				Type:         schema.TypeString,
 				Required:     true,
+				Description:  "VM's status",
 				ValidateFunc: validation.StringInSlice([]string{"RUNNING", "STOPPED", "SUSPENDED"}, false),
 			},
 			"force_status_change": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Description: "force VM's status change, will apply when power off or restart",
+				Optional:    true,
 			},
 			"disk": {
-				Type:     schema.TypeList,
-				Optional: true,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: "VM's virtual disks",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
-							Type:     schema.TypeInt,
-							Required: true,
+							Type:        schema.TypeInt,
+							Required:    true,
+							Description: "VM disk's boot order",
 						},
 						"bus": {
 							Type:         schema.TypeString,
 							Required:     true,
+							Description:  "VM disk's bus",
 							ValidateFunc: validation.StringInSlice([]string{"IDE", "SCSI", "VIRTIO"}, false),
 						},
 						"vm_volume_id": {
-							Type:     schema.TypeString,
-							Optional: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "use an existing VM volume as a VM disk, by specific it's id",
 						},
 						"vm_volume": {
-							Type:     schema.TypeList,
-							Optional: true,
-							Computed: true,
-							MaxItems: 1,
+							Type:        schema.TypeList,
+							Optional:    true,
+							Computed:    true,
+							Description: "create a new VM volume and use it as a VM disk",
+							MaxItems:    1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"storage_policy": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "the new VM volume's storage policy",
 										ValidateFunc: validation.StringInSlice(
 											[]string{
 												"REPLICA_2_THIN_PROVISION",
@@ -98,142 +112,169 @@ func resourceVm() *schema.Resource {
 										),
 									},
 									"name": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "the new VM volume's name",
 									},
 									"size": {
-										Type:     schema.TypeFloat,
-										Required: true,
+										Type:        schema.TypeFloat,
+										Required:    true,
+										Description: "the new VM volume's size, in the unit of byte",
 									},
 									"path": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeString,
+										Optional:    true,
+										Computed:    true,
+										Description: "the VM volume's iscsi LUN path",
 									},
 									"id": {
-										Type:     schema.TypeString,
-										Computed: true,
+										Type:        schema.TypeString,
+										Computed:    true,
+										Description: "the VM volume's id",
 									},
 								},
 							},
 						},
 						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "the VM disk's id",
 						},
 					},
 				},
 			},
 			"cd_rom": {
-				Type:     schema.TypeList,
-				Optional: true,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: "VM's CD-ROM",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
-							Type:     schema.TypeInt,
-							Required: true,
+							Type:        schema.TypeInt,
+							Required:    true,
+							Description: "VM CD-ROM's boot order",
 						},
 						"iso_id": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "mount an ISO to a VM CD-ROM by specific it's id",
 						},
 						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "VM CD-ROM's id",
 						},
 					},
 				},
 			},
 			"nic": {
-				Type:     schema.TypeList,
-				Optional: true,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: "VM's virtual nic",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"vlan_id": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "specific the vlan's id the VM nic will use",
 						},
 						"enabled": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeBool,
+							Description: "whether the VM nic is enabled",
+							Optional:    true,
+							Computed:    true,
 						},
 						"mirror": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeBool,
+							Description: "whether the VM nic use mirror mode",
+							Optional:    true,
+							Computed:    true,
 						},
 						"model": {
 							Type:         schema.TypeString,
+							Description:  "VM nic's model",
 							Optional:     true,
 							Computed:     true,
 							ValidateFunc: validation.StringInSlice([]string{"E1000", "SRIOV", "VIRTIO"}, false),
 						},
 						"mac_address": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "VM nic's mac address",
+							Optional:    true,
+							Computed:    true,
 						},
 						"ip_address": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "VM nic's IP address",
+							Optional:    true,
+							Computed:    true,
 						},
 						"subnet_mask": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "VM nic's subnet mask",
+							Optional:    true,
+							Computed:    true,
 						},
 						"gateway": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "VM nic's gateway",
+							Optional:    true,
+							Computed:    true,
 						},
 						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "VM nic's id",
+							Computed:    true,
 						},
 						"idx": {
-							Type:     schema.TypeInt,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Description: "VM nic's index",
+							Computed:    true,
 						},
 					},
 				},
 			},
 			"host_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Description: "VM's host id",
+				Optional:    true,
+				Computed:    true,
 			},
 			"folder_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Description: "VM's folder id",
+				Optional:    true,
+				Computed:    true,
 			},
 			"description": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Description: "VM's description",
+				Optional:    true,
+				Computed:    true,
 			},
 			"guest_os_type": {
 				Type:         schema.TypeString,
+				Description:  "VM's guest OS type",
 				Optional:     true,
 				Computed:     true,
 				ValidateFunc: validation.StringInSlice([]string{"LINUX", "WINDOWS", "UNKNOWN"}, false),
 			},
 			"cpu_cores": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeInt,
+				Description: "VM's cpu cores",
+				Optional:    true,
+				Computed:    true,
 			},
 			"cpu_sockets": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeInt,
+				Description: "VM's cpu sockets",
+				Optional:    true,
+				Computed:    true,
 			},
 			"id": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Description: "VM's id",
+				Computed:    true,
 			},
 		},
 	}
@@ -407,17 +448,17 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
 
-	vm, diags := readVm(ctx, d, ct)
+	v, diags := readVm(ctx, d, ct)
 	if diags != nil {
 		return diags
 	}
-	if err := d.Set("name", vm.Name); err != nil {
+	if err := d.Set("name", v.Name); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("host_id", vm.Host.ID); err != nil {
+	if err := d.Set("host_id", v.Host.ID); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("status", vm.Status); err != nil {
+	if err := d.Set("status", v.Status); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -793,13 +834,17 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				}
 				// update cd-rom
 				p := vm.NewUpdateVMDiskParams()
+				var elfImageId *string
+				if v.IsoId != nil && *v.IsoId != "" {
+					elfImageId = v.IsoId
+				}
 				p.RequestBody = &models.VMUpdateDiskParams{
 					Where: &models.VMWhereInput{
 						ID: &id,
 					},
 					Data: &models.VMUpdateDiskParamsData{
 						VMDiskID:   v.Id,
-						ElfImageID: v.IsoId,
+						ElfImageID: elfImageId,
 					},
 				}
 				vms, err := ct.Api.VM.UpdateVMDisk(p)
@@ -812,7 +857,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				}
 			}
 		}
-		for k, _ := range curMap {
+		for k := range curMap {
 			removeIds = append(removeIds, k)
 		}
 		if len(removeIds) > 0 {
@@ -910,7 +955,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				delete(curMap, *v.Id)
 			}
 		}
-		for k, _ := range curMap {
+		for k := range curMap {
 			removeIds = append(removeIds, k)
 		}
 		if len(removeIds) > 0 {
@@ -974,9 +1019,9 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.FromErr(err)
 	}
 	taskIds := make([]string, 0)
-	for _, vm := range vms.Payload {
-		if vm.TaskID != nil {
-			taskIds = append(taskIds, *vm.TaskID)
+	for _, v := range vms.Payload {
+		if v.TaskID != nil {
+			taskIds = append(taskIds, *v.TaskID)
 		}
 	}
 	_, err = ct.WaitTasksFinish(taskIds)
@@ -990,9 +1035,9 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 
 func waitVmTasksFinish(ct *cloudtower.Client, vms []*models.WithTaskVM) error {
 	taskIds := make([]string, 0)
-	for _, vm := range vms {
-		if vm.TaskID != nil {
-			taskIds = append(taskIds, *vm.TaskID)
+	for _, v := range vms {
+		if v.TaskID != nil {
+			taskIds = append(taskIds, *v.TaskID)
 		}
 	}
 	_, err := ct.WaitTasksFinish(taskIds)
@@ -1089,8 +1134,8 @@ func readVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) 
 		d.SetId("")
 		return nil, diags
 	}
-	vm := vms.Payload[0]
-	return vm, nil
+	v := vms.Payload[0]
+	return v, nil
 }
 
 func readVmNics(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMNic, diag.Diagnostics) {

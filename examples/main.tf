@@ -76,16 +76,8 @@ resource "cloudtower_vm" "tf_test" {
     iso_id = data.cloudtower_iso.ubuntu.isos[0].id
   }
 
+
   nic {
     vlan_id = data.cloudtower_vlan.vm_vlan.vlans[0].id
   }
-}
-
-data "cloudtower_vm" "test" {
-  status        = "RUNNING"
-  name_contains = "nest"
-}
-
-output "test_vm" {
-  value = data.cloudtower_vm.test.vms
 }

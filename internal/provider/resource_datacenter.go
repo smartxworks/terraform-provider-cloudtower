@@ -21,51 +21,16 @@ func resourceDatacenter() *schema.Resource {
 		DeleteContext: resourceDatacenterDelete,
 
 		Schema: map[string]*schema.Schema{
-			"id": &schema.Schema{
-				Type:     schema.TypeString,
-				Computed: true,
+			"id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "datacenter's id",
 			},
-			"failure_data_space": &schema.Schema{
-				Type:     schema.TypeInt,
-				Computed: true,
+			"name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "datacenter's name",
 			},
-			"name": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
-				//Computed: true,
-			},
-			//"cluster_num": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"total_cpu_hz": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"total_data_capacity": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"total_memory_bytes": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"used_cpu_hz": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"used_data_space": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"used_memory_bytes": &schema.Schema{
-			//	Type:     schema.TypeInt,
-			//	Computed: true,
-			//},
-			//"organization": &schema.Schema{
-			//	Type:     schema.TypeMap,
-			//	Computed: true,
-			//},
 		},
 	}
 }
@@ -74,7 +39,7 @@ func resourceDatacenterCreate(ctx context.Context, d *schema.ResourceData, meta 
 	ct := meta.(*cloudtower.Client)
 	cdp := datacenter.NewCreateDatacenterParams()
 	name := d.Get("name").(string)
-	cdp.RequestBody = []*models.DatacenterCreationParams{&models.DatacenterCreationParams{
+	cdp.RequestBody = []*models.DatacenterCreationParams{{
 		Name:           &name,
 		OrganizationID: &ct.OrgId,
 	}}
