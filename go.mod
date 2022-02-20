@@ -1,6 +1,6 @@
 module github.com/hashicorp/terraform-provider-cloudtower
 
-go 1.15
+go 1.16
 
 require (
 	github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220220150921-67cd95e079fa
