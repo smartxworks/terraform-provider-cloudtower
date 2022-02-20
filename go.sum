@@ -50,10 +50,6 @@ github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tN
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214135435-15b8e27448d9 h1:0+DDWtvnJ8SAcm4OVMYAz2xftU9l621VpPGGpy5/Fps=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220214135435-15b8e27448d9/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220220124850-0a1e828429cb h1:RH+qOyGPCQ1EMmnb5S2RDwN6CxwCOlXbVHx6KaDTZrg=
-github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220220124850-0a1e828429cb/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
 github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220220150921-67cd95e079fa h1:c9acuDfR/yl4vmBXNwBRkRZPr6EyQeMH+OqI9q3Sebs=
 github.com/Yuyz0112/cloudtower-go-sdk v0.0.0-20220220150921-67cd95e079fa/go.mod h1:wT4w3B8KvBXLuiw3xaJs/AditH3OcrrfuIAMJEka3C4=
 github.com/acomagu/bufpipe v1.0.3 h1:fxAGrHZTgQ9w5QqVItgzwj235/uYZYgbXitB+dLupOk=
@@ -213,8 +209,8 @@ github.com/go-openapi/strfmt v0.20.0/go.mod h1:UukAYgTaQfqJuAFlNxxMWNvMYiwiXtLsF
 github.com/go-openapi/strfmt v0.20.1/go.mod h1:43urheQI9dNtE5lTZQfuFJvjYJKPrxicATpEfZwHUNk=
 github.com/go-openapi/strfmt v0.20.2/go.mod h1:43urheQI9dNtE5lTZQfuFJvjYJKPrxicATpEfZwHUNk=
 github.com/go-openapi/strfmt v0.21.0/go.mod h1:ZRQ409bWMj+SOgXofQAGTIo2Ebu72Gs+WaRADcS5iNg=
-github.com/go-openapi/strfmt v0.21.1 h1:G6s2t5V5kGCHLVbSdZ/6lI8Wm4OzoPFkc3/cjAsKQrM=
-github.com/go-openapi/strfmt v0.21.1/go.mod h1:I/XVKeLc5+MM5oPNN7P6urMOpuLXEcNrCX/rPGuWb0k=
+github.com/go-openapi/strfmt v0.21.2 h1:5NDNgadiX1Vhemth/TH4gCGopWSTdDjxl60H3B7f+os=
+github.com/go-openapi/strfmt v0.21.2/go.mod h1:I/XVKeLc5+MM5oPNN7P6urMOpuLXEcNrCX/rPGuWb0k=
 github.com/go-openapi/swag v0.17.0/go.mod h1:AByQ+nYG6gQg71GINrmuDXCPWdL640yX49/kXLo40Tg=
 github.com/go-openapi/swag v0.18.0/go.mod h1:AByQ+nYG6gQg71GINrmuDXCPWdL640yX49/kXLo40Tg=
 github.com/go-openapi/swag v0.19.2/go.mod h1:POnQmlKehdgb5mhVOsnJFsivZCEZ/vjK9gh66Z9tfKk=
