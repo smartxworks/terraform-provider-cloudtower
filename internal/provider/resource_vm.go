@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_disk"
 	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_nic"
+	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_volume"
 	"github.com/Yuyz0112/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -443,6 +445,35 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 
+	vmDisks, vmVolumes, diags := readVmDisks(ctx, d, ct)
+	if diags != nil {
+		return diags
+	}
+	var disks []map[string]interface{}
+	for idx, d := range vmDisks {
+		vmVolume := vmVolumes[idx]
+		vmVolumeData := map[string]interface{}{
+			"id": d.VMVolume.ID,
+		}
+		if vmVolume != nil {
+			vmVolumeData["name"] = vmVolume.Name
+			vmVolumeData["size"] = vmVolume.Size
+			vmVolumeData["path"] = vmVolume.Path
+			vmVolumeData["storage_policy"] = vmVolume.ElfStoragePolicy
+		}
+		disks = append(disks, map[string]interface{}{
+			"id":   d.ID,
+			"boot": d.Boot,
+			"bus":  d.Bus,
+			"vm_volume": []map[string]interface{}{
+				vmVolumeData,
+			},
+		})
+	}
+	if err := d.Set("disk", disks); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return diags
 }
 
@@ -845,6 +876,47 @@ func readVmNics(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Clie
 		return nil, diag.FromErr(err)
 	}
 	return vmNics.Payload, nil
+}
+
+func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMDisk, []*models.VMVolume, diag.Diagnostics) {
+	id := d.Id()
+	gp := vm_disk.NewGetVMDisksParams()
+	typePt := models.VMDiskTypeDISK
+	gp.RequestBody = &models.GetVMDisksRequestBody{
+		Where: &models.VMDiskWhereInput{
+			Type: &typePt,
+			VM: &models.VMWhereInput{
+				ID: &id,
+			},
+		},
+	}
+	vmDisks, err := ct.Api.VMDisk.GetVMDisks(gp)
+	gp2 := vm_volume.NewGetVMVolumesParams()
+	gp2.RequestBody = &models.GetVMVolumesRequestBody{
+		Where: &models.VMVolumeWhereInput{
+			VMDisksSome: &models.VMDiskWhereInput{
+				Type: &typePt,
+				VM: &models.VMWhereInput{
+					ID: &id,
+				},
+			},
+		},
+	}
+	vmVolumes, err := ct.Api.VMVolume.GetVMVolumes(gp2)
+	vmVolumeMap := make(map[string]*models.VMVolume)
+	for _, v := range vmVolumes.Payload {
+		vmVolumeMap[*v.ID] = v
+	}
+	vmVolumesSlice := make([]*models.VMVolume, len(vmDisks.Payload))
+	for idx, v := range vmDisks.Payload {
+		vmVolume := vmVolumeMap[*v.VMVolume.ID]
+		vmVolumesSlice[idx] = vmVolume
+	}
+
+	if err != nil {
+		return nil, nil, diag.FromErr(err)
+	}
+	return vmDisks.Payload, vmVolumesSlice, nil
 }
 
 func derefAny(v interface{}, fallback interface{}) interface{} {
