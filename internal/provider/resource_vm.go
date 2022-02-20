@@ -63,7 +63,6 @@ func resourceVm() *schema.Resource {
 			"disk": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
@@ -128,7 +127,6 @@ func resourceVm() *schema.Resource {
 			"cd_rom": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"boot": {
@@ -149,7 +147,6 @@ func resourceVm() *schema.Resource {
 			"nic": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"vlan_id": {
@@ -251,6 +248,7 @@ type VmDisk struct {
 }
 
 type VmDiskVmVolume struct {
+	Id            *string                             `json:"id"`
 	StoragePolicy models.VMVolumeElfStoragePolicyType `json:"storage_policy"`
 	Name          string                              `json:"name"`
 	Size          float64                             `json:"size"`
@@ -856,6 +854,108 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		}
 	}
+
+	if d.HasChange("disk") {
+		vmDisks, _, diags := readVmDisks(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		curMap := make(map[string]*int, 0)
+		for idx, v := range vmDisks {
+			_idx := idx
+			curMap[*v.ID] = &_idx
+		}
+
+		var disks []*VmDisk
+		bytes, err := json.Marshal(d.Get("disk"))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &disks)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+
+		mountDisks := make([]*models.MountDisksParams, 0)
+		mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
+		var removeIds []string
+		for _, v := range disks {
+			if v.Id == nil || *v.Id == "" {
+				// new disk
+				// TODO: reuse with create context
+				boot := int32(v.Boot)
+				if *v.VmVolumeId != "" {
+					mountDisks = append(mountDisks, &models.MountDisksParams{
+						Boot:       &boot,
+						Bus:        &v.Bus,
+						VMVolumeID: v.VmVolumeId,
+						Index:      &boot,
+					})
+				} else if v.VmVolume != nil && len(*v.VmVolume) == 1 {
+					volume := *v.VmVolume
+					mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParams{
+						Boot: &boot,
+						Bus:  &v.Bus,
+						VMVolume: &models.MountNewCreateDisksParamsVMVolume{
+							ElfStoragePolicy: &volume[0].StoragePolicy,
+							Name:             &volume[0].Name,
+							Size:             &volume[0].Size,
+							Path:             *volume[0].Path,
+						},
+						Index: boot,
+					})
+				}
+			} else if curMap[*v.Id] != nil {
+				// TODO: support update vm disk
+				delete(curMap, *v.Id)
+			}
+		}
+		for k, _ := range curMap {
+			removeIds = append(removeIds, k)
+		}
+		if len(removeIds) > 0 {
+			p := vm.NewRemoveVMDiskParams()
+			p.RequestBody = &models.VMRemoveDiskParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMRemoveDiskParamsData{
+					DiskIds: removeIds,
+				},
+			}
+			vms, err := ct.Api.VM.RemoveVMDisk(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+		if len(mountDisks)+len(mountNewCreateDisks) > 0 {
+			p := vm.NewAddVMDiskParams()
+			p.RequestBody = &models.VMAddDiskParams{
+				Where: &models.VMWhereInput{
+					ID: &id,
+				},
+				Data: &models.VMAddDiskParamsData{
+					VMDisks: &models.VMAddDiskParamsDataVMDisks{
+						MountDisks:          mountDisks,
+						MountNewCreateDisks: mountNewCreateDisks,
+					},
+				},
+			}
+			vms, err := ct.Api.VM.AddVMDisk(p)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = waitVmTasksFinish(ct, vms.Payload)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
 	return resourceVmRead(ctx, d, meta)
 }
 

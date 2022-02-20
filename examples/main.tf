@@ -51,18 +51,28 @@ resource "cloudtower_vm" "tf_test" {
   status              = "STOPPED"
   force_status_change = true
 
-  disk {
-    boot = 1
-    bus  = "VIRTIO"
-    vm_volume {
-      storage_policy = "REPLICA_2_THIN_PROVISION"
-      name           = "v1"
-      size           = 10 * 1024 * 1024 * 1024
-    }
-  }
+  #  disk {
+  #    boot = 2
+  #    bus  = "VIRTIO"
+  #    vm_volume {
+  #      storage_policy = "REPLICA_2_THIN_PROVISION"
+  #      name           = "d1"
+  #      size           = 10 * 1024 * 1024 * 1024
+  #    }
+  #  }
+  #
+  #  disk {
+  #    boot = 3
+  #    bus  = "VIRTIO"
+  #    vm_volume {
+  #      storage_policy = "REPLICA_3_THICK_PROVISION"
+  #      name           = "d2"
+  #      size           = 1 * 1024 * 1024 * 1024
+  #    }
+  #  }
 
   cd_rom {
-    boot   = 2
+    boot   = 1
     iso_id = data.cloudtower_iso.ubuntu.isos[0].id
   }
 
