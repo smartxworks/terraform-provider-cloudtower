@@ -81,6 +81,11 @@ resource "cloudtower_vm" "tf_test" {
   }
 }
 
-#output "test_vm" {
-#  value = cloudtower_vm.tf_test
-#}
+data "cloudtower_vm" "test" {
+  status        = "RUNNING"
+  name_contains = "nest"
+}
+
+output "test_vm" {
+  value = data.cloudtower_vm.test.vms
+}
