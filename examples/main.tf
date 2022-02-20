@@ -35,10 +35,15 @@ data "cloudtower_iso" "ubuntu" {
   cluster_id    = cloudtower_cluster.c_1739.id
 }
 
+data "cloudtower_host" "host_1741" {
+  management_ip_contains = "17.41"
+}
+
 resource "cloudtower_vm" "tf_test" {
   name                = "yanzhen-tf-test"
   description         = "managed by terraform"
   cluster_id          = cloudtower_cluster.c_1739.id
+  host_id             = data.cloudtower_host.host_1741.hosts[0].id
   vcpu                = 4
   memory              = 8 * 1024 * 1024 * 1024
   ha                  = true
