@@ -16,5 +16,5 @@ build: fmt  ## Build binary.
 	go build -o ./bin/terraform-provider-cloudtower main.go
 
 install: build ## Run a controller from your host.
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/smartx/cloudtower/0.1.0/darwin_arm64
-	mv ./bin/terraform-provider-cloudtower ~/.terraform.d/plugins/registry.terraform.io/smartx/cloudtower/0.1.0/darwin_arm64/
+	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/Yuyz0112/cloudtower/0.1.3/darwin_arm64
+	mv ./bin/terraform-provider-cloudtower ~/.terraform.d/plugins/registry.terraform.io/Yuyz0112/cloudtower/0.1.3/darwin_arm64/

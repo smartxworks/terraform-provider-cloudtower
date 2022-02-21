@@ -383,7 +383,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		})
 	}
 	mountDisks := make([]*models.MountDisksParams, 0)
-	var mountNewCreateDisks []*models.MountNewCreateDisksParams
+	mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
 	for _, disk := range disks {
 		boot := int32(disk.Boot)
 		if *disk.VmVolumeId != "" {
