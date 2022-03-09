@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     cloudtower = {
-      version = "~> 0.1.4"
+      version = "~> 0.1.3"
       source  = "registry.terraform.io/Yuyz0112/cloudtower"
     }
   }
