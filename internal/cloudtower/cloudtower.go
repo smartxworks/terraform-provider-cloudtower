@@ -2,14 +2,15 @@ package cloudtower
 
 import (
 	"errors"
-	apiclient "github.com/Yuyz0112/cloudtower-go-sdk/client"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/organization"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/task"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/user"
-	"github.com/Yuyz0112/cloudtower-go-sdk/models"
+	"time"
+
+	apiclient "github.com/Sczlog/cloudtower-go-sdk/client"
+	"github.com/Sczlog/cloudtower-go-sdk/client/organization"
+	"github.com/Sczlog/cloudtower-go-sdk/client/task"
+	"github.com/Sczlog/cloudtower-go-sdk/client/user"
+	"github.com/Sczlog/cloudtower-go-sdk/models"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
-	"time"
 )
 
 const (
@@ -35,7 +36,7 @@ type Client struct {
 	source   models.UserSource
 	token    string
 	OrgId    string
-	Api      *apiclient.CloudTowerAPIs
+	Api      *apiclient.Cloudtower
 }
 
 func NewClient(server string, username string, passwd string, source models.UserSource) (*Client, error) {

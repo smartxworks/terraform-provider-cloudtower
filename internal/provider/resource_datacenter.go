@@ -2,8 +2,9 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/datacenter"
-	"github.com/Yuyz0112/cloudtower-go-sdk/models"
+
+	"github.com/Sczlog/cloudtower-go-sdk/client/datacenter"
+	"github.com/Sczlog/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -88,7 +89,7 @@ func resourceDatacenterUpdate(ctx context.Context, d *schema.ResourceData, meta 
 			ID: &id,
 		},
 		Data: &models.DatacenterUpdationParamsData{
-			Name: name,
+			Name: &name,
 		},
 	}
 	_, err := ct.Api.Datacenter.UpdateDatacenter(udp)
