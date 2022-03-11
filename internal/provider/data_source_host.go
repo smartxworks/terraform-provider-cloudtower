@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Sczlog/cloudtower-go-sdk/client/host"
-	"github.com/Sczlog/cloudtower-go-sdk/models"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/smartxworks/cloudtower-go-sdk/client/host"
+	"github.com/smartxworks/cloudtower-go-sdk/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
