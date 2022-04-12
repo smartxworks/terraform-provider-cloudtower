@@ -2,9 +2,10 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/cluster"
-	"github.com/Yuyz0112/cloudtower-go-sdk/models"
+
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/smartxworks/cloudtower-go-sdk/client/cluster"
+	"github.com/smartxworks/cloudtower-go-sdk/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -65,7 +66,7 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 		IP:           &ip,
 		Username:     &username,
 		Password:     &password,
-		DatacenterID: datacenterId,
+		DatacenterID: &datacenterId,
 	}}
 	clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
 	if err != nil {
@@ -119,10 +120,10 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 			ID: &id,
 		},
 		Data: &models.ClusterUpdationParamsData{
-			IP:           ip,
-			Username:     username,
-			Password:     password,
-			DatacenterID: datacenterId,
+			IP:           &ip,
+			Username:     &username,
+			Password:     &password,
+			DatacenterID: &datacenterId,
 		},
 	}
 	clusters, err := ct.Api.Cluster.UpdateCluster(ucp)

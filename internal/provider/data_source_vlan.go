@@ -2,12 +2,13 @@ package provider
 
 import (
 	"context"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/vlan"
-	"github.com/Yuyz0112/cloudtower-go-sdk/models"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"strconv"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/smartxworks/cloudtower-go-sdk/client/vlan"
+	"github.com/smartxworks/cloudtower-go-sdk/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"

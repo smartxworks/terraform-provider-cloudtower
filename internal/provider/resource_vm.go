@@ -3,16 +3,17 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_disk"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_nic"
-	"github.com/Yuyz0112/cloudtower-go-sdk/client/vm_volume"
-	"github.com/Yuyz0112/cloudtower-go-sdk/models"
+	"reflect"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-	"reflect"
+	"github.com/smartxworks/cloudtower-go-sdk/client/vm"
+	"github.com/smartxworks/cloudtower-go-sdk/client/vm_disk"
+	"github.com/smartxworks/cloudtower-go-sdk/client/vm_nic"
+	"github.com/smartxworks/cloudtower-go-sdk/client/vm_volume"
+	"github.com/smartxworks/cloudtower-go-sdk/models"
 )
 
 func resourceVm() *schema.Resource {
@@ -356,7 +357,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	for _, cdRom := range _cdRoms {
 		cdRoms = append(cdRoms, &models.VMCdRomParams{
 			Boot:       &cdRom.Boot,
-			ElfImageID: *cdRom.IsoId,
+			ElfImageID: cdRom.IsoId,
 			Index:      &cdRom.Boot,
 		})
 	}
@@ -402,9 +403,9 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 					ElfStoragePolicy: &volume[0].StoragePolicy,
 					Name:             &volume[0].Name,
 					Size:             &volume[0].Size,
-					Path:             *volume[0].Path,
+					Path:             volume[0].Path,
 				},
-				Index: boot,
+				Index: &boot,
 			})
 		}
 	}
@@ -416,10 +417,10 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		Ha:          &basic.Ha,
 		Firmware:    &firmware,
 		Status:      &status.Status,
-		HostID:      basic.HostId,
-		FolderID:    basic.FolderId,
-		Description: basic.Description,
-		GuestOsType: guestOsType,
+		HostID:      &basic.HostId,
+		FolderID:    &basic.FolderId,
+		Description: &basic.Description,
+		GuestOsType: &guestOsType,
 		CPUCores:    basic.CpuCores,
 		CPUSockets:  basic.CpuSockets,
 		VMDisks: &models.VMDiskParams{
@@ -551,13 +552,13 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				ID: &id,
 			},
 			Data: &models.VMUpdateParamsData{
-				Name:        basic.Name,
-				Vcpu:        basic.Vcpu,
-				Memory:      basic.Memory,
-				Description: basic.Description,
-				Ha:          basic.Ha,
-				CPUCores:    *basic.CpuCores,
-				CPUSockets:  *basic.CpuSockets,
+				Name:        &basic.Name,
+				Vcpu:        &basic.Vcpu,
+				Memory:      &basic.Memory,
+				Description: &basic.Description,
+				Ha:          &basic.Ha,
+				CPUCores:    basic.CpuCores,
+				CPUSockets:  basic.CpuSockets,
 			},
 		}
 		vms, err := ct.Api.VM.UpdateVM(uvp)
@@ -690,6 +691,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		var adds []*models.VMNicParams
 		var removes []int32
+		enabled := false
 		for _, n := range nics {
 			if n.Id == nil || *n.Id == "" {
 				// new nic
@@ -721,15 +723,15 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 						ID: &id,
 					},
 					Data: &models.VMUpdateNicParamsData{
-						ConnectVlanID: n.VlanId,
-						Enabled:       false,
+						ConnectVlanID: &n.VlanId,
+						Enabled:       &enabled,
 						Gateway:       n.Gateway,
 						IPAddress:     n.IPAddress,
 						MacAddress:    n.MacAddress,
 						Mirror:        n.Mirror,
 						Model:         n.Model,
 						SubnetMask:    n.SubnetMask,
-						NicID:         *n.Id,
+						NicID:         n.Id,
 						NicIndex:      &idx,
 					},
 				}
@@ -816,7 +818,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				// new cd-rom
 				adds = append(adds, &models.VMCdRomParams{
 					Boot:       &v.Boot,
-					ElfImageID: *v.IsoId,
+					ElfImageID: v.IsoId,
 					Index:      &v.Boot,
 				})
 			} else if curMap[*v.Id] != nil {
@@ -945,9 +947,9 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 							ElfStoragePolicy: &volume[0].StoragePolicy,
 							Name:             &volume[0].Name,
 							Size:             &volume[0].Size,
-							Path:             *volume[0].Path,
+							Path:             volume[0].Path,
 						},
-						Index: boot,
+						Index: &boot,
 					})
 				}
 			} else if curMap[*v.Id] != nil {
