@@ -10,16 +10,16 @@ terraform {
 provider "cloudtower" {
   username          = "root"
   user_source       = "LOCAL"
-  cloudtower_server = "terraform.dev-cloudtower.smartx.com"
+  cloudtower_server = "yinsw-terraform.dev-cloudtower.smartx.com"
 }
 
-data "cloudtower_datacenter" "sample_dc" {}
+# data "cloudtower_datacenter" "sample_dc" {}
 
 resource "cloudtower_cluster" "sample_cluster" {
-  ip            = "192.168.17.39"
+  ip            = "192.168.31.156"
   username      = "root"
-  password      = "tower2022"
-  datacenter_id = data.cloudtower_datacenter.sample_dc.datacenters[0].id
+  password      = "111111"
+#  datacenter_id = data.cloudtower_datacenter.sample_dc.datacenters[0].id
 }
 
 data "cloudtower_vlan" "vm_vlan" {
@@ -28,13 +28,13 @@ data "cloudtower_vlan" "vm_vlan" {
   cluster_id = cloudtower_cluster.sample_cluster.id
 }
 
-data "cloudtower_iso" "ubuntu" {
-  name_contains = "ubuntu"
-  cluster_id    = cloudtower_cluster.sample_cluster.id
-}
+# data "cloudtower_iso" "ubuntu" {
+#   name_contains = "ubuntu"
+#   cluster_id    = cloudtower_cluster.sample_cluster.id
+# }
 
 data "cloudtower_host" "target_host" {
-  management_ip_contains = "17.42"
+  management_ip_contains = "31.156"
   cluster_id             = cloudtower_cluster.sample_cluster.id
 }
 
@@ -44,44 +44,41 @@ resource "cloudtower_vm" "tf_test" {
   cluster_id          = cloudtower_cluster.sample_cluster.id
   host_id             = data.cloudtower_host.target_host.hosts[0].id
   vcpu                = 4
-  memory              = 8 * 1024 * 1024 * 1024
-  ha                  = true
+  memory              = 4 * 1024 * 1024 * 1024
+  ha                  = false
   firmware            = "BIOS"
   status              = "STOPPED"
   force_status_change = true
 
   cd_rom {
-    boot   = 1
-    iso_id = data.cloudtower_iso.ubuntu.isos[0].id
+    boot   = 2
+    iso_id = ""
   }
-
-
+  
   disk {
-    boot = 2
+    boot = 1
     bus  = "VIRTIO"
     vm_volume {
       storage_policy = "REPLICA_2_THIN_PROVISION"
       name           = "d1"
-      size           = 10 * 1024 * 1024 * 1024
+      size           = 20 * 1024 * 1024 * 1024
     }
-  }
-
-  disk {
-    boot = 3
-    bus  = "VIRTIO"
-    vm_volume {
-      storage_policy = "REPLICA_3_THICK_PROVISION"
-      name           = "d2"
-      size           = 1 * 1024 * 1024 * 1024
-    }
-  }
-
-  cd_rom {
-    boot   = 4
-    iso_id = ""
   }
 
   nic {
     vlan_id = data.cloudtower_vlan.vm_vlan.vlans[0].id
   }
+}
+
+resource "cloudtower_vm_snapshot" "tf_test_snapshot" {
+  name        = "tf-test-snapshot"
+  vm_id       = cloudtower_vm.tf_test.id
+}
+
+resource "cloudtower_vm" "tf_test_vm_from_snapshot" {
+  name         = "tf-test-vm-from-snapshot"
+  cluster_id   = cloudtower_cluster.sample_cluster.id
+  rebuild_from = cloudtower_vm_snapshot.tf_test_snapshot.id
+  ha           = false
+  memory       = 2 * 1024 * 1024 * 1024
 }
