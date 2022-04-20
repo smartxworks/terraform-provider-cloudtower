@@ -34,33 +34,34 @@ func resourceVm() *schema.Resource {
 			},
 			"cluster_id": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
 				Description: "VM's cluster id",
 			},
 			"vcpu": {
 				Type:        schema.TypeInt,
-				Required:    true,
+				Optional:    true,
 				Description: "VM's vcpu",
 			},
 			"memory": {
 				Type:        schema.TypeFloat,
-				Required:    true,
+				Optional:    true,
 				Description: "VM's memory, in the unit of byte",
 			},
 			"ha": {
 				Type:        schema.TypeBool,
-				Required:    true,
+				Optional:    true,
 				Description: "whether VM is HA or not",
 			},
 			"firmware": {
 				Type:         schema.TypeString,
-				Required:     true,
+				Optional:     true,
 				Description:  "VM's firmware",
 				ValidateFunc: validation.StringInSlice([]string{"BIOS", "UEFI"}, false),
 			},
 			"status": {
 				Type:         schema.TypeString,
-				Required:     true,
+				Optional:     true,
+				Computed:     true,
 				Description:  "VM's status",
 				ValidateFunc: validation.StringInSlice([]string{"RUNNING", "STOPPED", "SUSPENDED"}, false),
 			},
@@ -72,6 +73,7 @@ func resourceVm() *schema.Resource {
 			"disk": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's virtual disks",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -147,6 +149,7 @@ func resourceVm() *schema.Resource {
 			"cd_rom": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's CD-ROM",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -171,6 +174,7 @@ func resourceVm() *schema.Resource {
 			"nic": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's virtual nic",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -235,6 +239,19 @@ func resourceVm() *schema.Resource {
 					},
 				},
 			},
+			// snapshot
+			"rebuild_from": {
+				Type:        schema.TypeString,
+				Description: "Vm is rebuild from target snapshot",
+				Optional:    true,
+				ForceNew:    true,
+			},
+			"rollback_to": {
+				Type:        schema.TypeString,
+				Description: "Vm is going to rollback to target snapshot",
+				Optional:    true,
+			},
+			// computed
 			"host_id": {
 				Type:        schema.TypeString,
 				Description: "VM's host id",
@@ -282,162 +299,268 @@ func resourceVm() *schema.Resource {
 }
 
 type VmDisk struct {
-	Id         *string            `json:"id"`
-	Boot       int                `json:"boot"`
-	Bus        models.Bus         `json:"bus"`
-	VmVolumeId *string            `json:"vm_volume_id"`
-	VmVolume   *[]*VmDiskVmVolume `json:"vm_volume"`
+	Id         string           `json:"id"`
+	Boot       int              `json:"boot"`
+	Bus        models.Bus       `json:"bus"`
+	VmVolumeId string           `json:"vm_volume_id"`
+	VmVolume   []VmDiskVmVolume `json:"vm_volume"`
 }
 
 type VmDiskVmVolume struct {
-	Id            *string                             `json:"id"`
+	Id            string                              `json:"id"`
 	StoragePolicy models.VMVolumeElfStoragePolicyType `json:"storage_policy"`
 	Name          string                              `json:"name"`
-	Size          float64                             `json:"size"`
-	Path          *string                             `json:"path"`
+	Size          int64                               `json:"size"`
+	Path          string                              `json:"path"`
 }
 
 type CdRom struct {
-	Id    *string `json:"id"`
-	Boot  int32   `json:"boot"`
-	IsoId *string `json:"iso_id"`
+	Id    string `json:"id"`
+	Boot  int32  `json:"boot"`
+	IsoId string `json:"iso_id"`
 }
 
 type VmNic struct {
 	models.VMNicParams
-	VlanId string  `json:"vlan_id"`
-	Id     *string `json:"id"`
-	Idx    *int    `json:"idx"`
+	VlanId string `json:"vlan_id"`
+	Id     string `json:"id"`
+	Idx    int    `json:"idx"`
 }
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	cvp := vm.NewCreateVMParams()
+
 	basic, err := expandVmBasicConfig(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	clusterId := d.Get("cluster_id").(string)
-	var firmware models.VMFirmware
+	var clusterId *string = nil
+	_clusterId, ok := d.GetOk("cluster_id")
+	if ok {
+		_clusterId := _clusterId.(string)
+		clusterId = &_clusterId
+	}
+	var firmware *models.VMFirmware = nil
 	switch d.Get("firmware").(string) {
 	case "BIOS":
-		firmware = models.VMFirmwareBIOS
+		firmware = models.VMFirmwareBIOS.Pointer()
 	case "UEFI":
-		firmware = models.VMFirmwareUEFI
+		firmware = models.VMFirmwareUEFI.Pointer()
 	}
 	status, err := expandVmStatusConfig(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	var guestOsType models.VMGuestsOperationSystem
+	var guestOsType *models.VMGuestsOperationSystem = nil
 	switch d.Get("guest_os_type").(string) {
 	case "LINUX":
-		guestOsType = models.VMGuestsOperationSystemLINUX
+		guestOsType = models.VMGuestsOperationSystemLINUX.Pointer()
 	case "WINDOWS":
-		guestOsType = models.VMGuestsOperationSystemWINDOWS
+		guestOsType = models.VMGuestsOperationSystemWINDOWS.Pointer()
 	case "UNKNOWN":
-		guestOsType = models.VMGuestsOperationSystemUNKNOWN
+		guestOsType = models.VMGuestsOperationSystemUNKNOWN.Pointer()
 	}
 	var disks []*VmDisk
-	bytes, err := json.Marshal(d.Get("disk"))
-	if err != nil {
-		return diag.FromErr(err)
+	if rawDisk, ok := d.GetOk("disk"); ok && rawDisk != "" {
+		bytes, err := json.Marshal(rawDisk)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &disks)
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	err = json.Unmarshal(bytes, &disks)
-	if err != nil {
-		return diag.FromErr(err)
-	}
+
 	var cdRoms []*models.VMCdRomParams
 	var _cdRoms []*CdRom
-	bytes, err = json.Marshal(d.Get("cd_rom"))
-	if err != nil {
-		return diag.FromErr(err)
+	if rawCdRom, ok := d.GetOk("cd_rom"); ok && rawCdRom != "" {
+		bytes, err := json.Marshal(rawCdRom)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &_cdRoms)
+		for _, cdRom := range _cdRoms {
+			params := &models.VMCdRomParams{
+				Boot:  &cdRom.Boot,
+				Index: &cdRom.Boot,
+			}
+			if cdRom.IsoId != "" {
+				params.ElfImageID = &cdRom.IsoId
+			}
+			cdRoms = append(cdRoms, params)
+		}
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	err = json.Unmarshal(bytes, &_cdRoms)
-	for _, cdRom := range _cdRoms {
-		cdRoms = append(cdRoms, &models.VMCdRomParams{
-			Boot:       &cdRom.Boot,
-			ElfImageID: cdRom.IsoId,
-			Index:      &cdRom.Boot,
-		})
-	}
-	if err != nil {
-		return diag.FromErr(err)
-	}
+
 	var nics []*VmNic
-	bytes, err = json.Marshal(d.Get("nic"))
-	err = json.Unmarshal(bytes, &nics)
-	if err != nil {
-		return diag.FromErr(err)
-	}
 	var vmNics []*models.VMNicParams
-	for _, nic := range nics {
-		vmNics = append(vmNics, &models.VMNicParams{
-			ConnectVlanID: &nic.VlanId,
-			Enabled:       nic.Enabled,
-			Gateway:       nic.Gateway,
-			IPAddress:     nic.IPAddress,
-			MacAddress:    nic.MacAddress,
-			Mirror:        nic.Mirror,
-			Model:         nic.Model,
-			SubnetMask:    nic.SubnetMask,
-		})
+	if rawNic, ok := d.GetOk("nic"); ok && rawNic != "" {
+		bytes, err := json.Marshal(d.Get("nic"))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &nics)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		for _, nic := range nics {
+			params := &models.VMNicParams{
+				ConnectVlanID: &nic.VlanId,
+				//FIXME: not to set 0 value to boolean
+				Enabled: nic.Enabled,
+				Mirror:  nic.Mirror,
+			}
+			if *nic.Model != "" {
+				params.Model = nic.Model
+			}
+			if *nic.Gateway != "" {
+				params.Gateway = nic.Gateway
+			}
+			if *nic.IPAddress != "" {
+				params.IPAddress = nic.IPAddress
+			}
+			if *nic.MacAddress != "" {
+				params.MacAddress = nic.MacAddress
+			}
+			if *nic.SubnetMask != "" {
+				params.SubnetMask = nic.SubnetMask
+			}
+			vmNics = append(vmNics, params)
+		}
 	}
+
 	mountDisks := make([]*models.MountDisksParams, 0)
 	mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
 	for _, disk := range disks {
 		boot := int32(disk.Boot)
-		if *disk.VmVolumeId != "" {
+		if disk.VmVolumeId != "" {
 			mountDisks = append(mountDisks, &models.MountDisksParams{
 				Boot:       &boot,
 				Bus:        &disk.Bus,
-				VMVolumeID: disk.VmVolumeId,
+				VMVolumeID: &disk.VmVolumeId,
 				Index:      &boot,
 			})
-		} else if disk.VmVolume != nil && len(*disk.VmVolume) == 1 {
-			volume := *disk.VmVolume
-			mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParams{
+		} else if disk.VmVolume != nil && len(disk.VmVolume) == 1 {
+			volume := disk.VmVolume[0]
+			params := &models.MountNewCreateDisksParams{
 				Boot: &boot,
 				Bus:  &disk.Bus,
 				VMVolume: &models.MountNewCreateDisksParamsVMVolume{
-					ElfStoragePolicy: &volume[0].StoragePolicy,
-					Name:             &volume[0].Name,
-					Size:             &volume[0].Size,
-					Path:             volume[0].Path,
+					ElfStoragePolicy: &volume.StoragePolicy,
+					Name:             &volume.Name,
+					Size:             &volume.Size,
 				},
 				Index: &boot,
-			})
+			}
+			if volume.Path != "" {
+				params.VMVolume.Path = &volume.Path
+			}
+			mountNewCreateDisks = append(mountNewCreateDisks, params)
 		}
 	}
-	cvp.RequestBody = []*models.VMCreationParams{{
-		Name:        &basic.Name,
-		ClusterID:   &clusterId,
-		Vcpu:        &basic.Vcpu,
-		Memory:      &basic.Memory,
-		Ha:          &basic.Ha,
-		Firmware:    &firmware,
-		Status:      &status.Status,
-		HostID:      &basic.HostId,
-		FolderID:    &basic.FolderId,
-		Description: &basic.Description,
-		GuestOsType: &guestOsType,
-		CPUCores:    basic.CpuCores,
-		CPUSockets:  basic.CpuSockets,
-		VMDisks: &models.VMDiskParams{
-			MountCdRoms:         cdRoms,
-			MountDisks:          mountDisks,
-			MountNewCreateDisks: mountNewCreateDisks,
-		},
-		VMNics: vmNics,
-	}}
-	//str, err := json.Marshal(cvp.RequestBody)
-	//return diag.Errorf(string(str))
-	vms, err := ct.Api.VM.CreateVM(cvp)
-	if err != nil {
-		return diag.FromErr(err)
+	var vms []*models.WithTaskVM
+	if rebuildFrom := d.Get("rebuild_from").(string); rebuildFrom != "" {
+		// rebuild from target snapshot
+		rp := vm.NewRebuildVMParams()
+		rp.RequestBody = []*models.VMRebuildParams{
+			{
+				Name:        &basic.Name,
+				ClusterID:   clusterId,
+				Vcpu:        basic.Vcpu,
+				Memory:      basic.Memory,
+				Ha:          basic.Ha,
+				Firmware:    firmware,
+				Status:      status.Status,
+				HostID:      basic.HostId,
+				FolderID:    basic.FolderId,
+				Description: basic.Description,
+				GuestOsType: guestOsType,
+				CPUCores:    basic.CpuCores,
+				CPUSockets:  basic.CpuSockets,
+				VMDisks: &models.VMDiskParams{
+					MountCdRoms:         cdRoms,
+					MountDisks:          mountDisks,
+					MountNewCreateDisks: mountNewCreateDisks,
+				},
+				VMNics:                vmNics,
+				RebuildFromSnapshotID: &rebuildFrom,
+			},
+		}
+		response, err := ct.Api.VM.RebuildVM(rp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		vms = response.Payload
+	} else {
+		// normal create
+		cvp := vm.NewCreateVMParams()
+		// check status
+		missingFields := make([]string, 0)
+		if basic.Vcpu == nil {
+			missingFields = append(missingFields, "vcpu")
+		}
+		if basic.Ha == nil {
+			missingFields = append(missingFields, "ha")
+		}
+		if basic.Memory == nil {
+			missingFields = append(missingFields, "memory")
+		}
+		if basic.HostId == nil {
+			missingFields = append(missingFields, "host_id")
+		}
+		if clusterId == nil {
+			missingFields = append(missingFields, "cluster_id")
+		}
+		if status.Status == nil {
+			missingFields = append(missingFields, "status")
+		}
+		if firmware == nil {
+			missingFields = append(missingFields, "firmware")
+		}
+		if len(missingFields) > 0 {
+			return diag.Errorf("Simple create vm need more config, missing fields: %v", missingFields)
+		}
+		if basic.CpuCores == nil {
+			var core int32 = 1
+			basic.CpuCores = &core
+		}
+		if basic.CpuSockets == nil {
+			socket := *basic.Vcpu / *basic.CpuCores
+			basic.CpuSockets = &socket
+		}
+		cvp.RequestBody = []*models.VMCreationParams{{
+			Name:        &basic.Name,
+			ClusterID:   clusterId,
+			Vcpu:        basic.Vcpu,
+			Memory:      basic.Memory,
+			Ha:          basic.Ha,
+			Firmware:    firmware,
+			Status:      status.Status,
+			HostID:      basic.HostId,
+			FolderID:    basic.FolderId,
+			Description: basic.Description,
+			GuestOsType: guestOsType,
+			CPUCores:    basic.CpuCores,
+			CPUSockets:  basic.CpuSockets,
+			VMDisks: &models.VMDiskParams{
+				MountCdRoms:         cdRoms,
+				MountDisks:          mountDisks,
+				MountNewCreateDisks: mountNewCreateDisks,
+			},
+			VMNics: vmNics,
+		}}
+		response, err := ct.Api.VM.CreateVM(cvp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		vms = response.Payload
 	}
-	d.SetId(*vms.Payload[0].Data.ID)
-	err = waitVmTasksFinish(ct, vms.Payload)
+
+	d.SetId(*vms[0].Data.ID)
+	err = waitVmTasksFinish(ct, vms)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -453,9 +576,10 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	if diags != nil {
 		return diags
 	}
-	if err := d.Set("name", v.Name); err != nil {
-		return diag.FromErr(err)
-	}
+
+	// if err := d.Set("name", v.Name); err != nil {
+	// 	return diag.FromErr(err)
+	// }
 	if err := d.Set("host_id", v.Host.ID); err != nil {
 		return diag.FromErr(err)
 	}
@@ -541,6 +665,33 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	ct := meta.(*cloudtower.Client)
 	id := d.Id()
 
+	// rollback vm to target state first if rollback_to not match rollback from
+	if d.HasChange("rollback_to") {
+		rawRollbackTo, ok := d.GetOk("rollback_to")
+		if ok {
+			rollbackTo := rawRollbackTo.(string)
+			if rollbackTo != "" {
+				// if rollbackTo was set to empty string or undefined, not do anything
+				id := d.Id()
+				rp := vm.NewRollbackVMParams()
+				rp.RequestBody = &models.VMRollbackParams{
+					Where: &models.VMWhereInput{
+						ID: &id,
+					},
+					Data: &models.VMRollbackParamsData{
+						SnapshotID: &rollbackTo,
+					},
+				}
+				vms, err := ct.Api.VM.RollbackVM(rp)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				waitVmTasksFinish(ct, vms.Payload)
+				resourceVmRead(ctx, d, meta)
+			}
+		}
+	}
+
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
 		basic, err := expandVmBasicConfig(d)
 		if err != nil {
@@ -553,10 +704,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			},
 			Data: &models.VMUpdateParamsData{
 				Name:        &basic.Name,
-				Vcpu:        &basic.Vcpu,
-				Memory:      &basic.Memory,
-				Description: &basic.Description,
-				Ha:          &basic.Ha,
+				Vcpu:        basic.Vcpu,
+				Memory:      basic.Memory,
+				Description: basic.Description,
+				Ha:          basic.Ha,
 				CPUCores:    basic.CpuCores,
 				CPUSockets:  basic.CpuSockets,
 			},
@@ -580,7 +731,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		switch status.Status {
+		switch *status.Status {
 		case models.VMStatusRUNNING:
 			uvp := vm.NewStartVMParams()
 			uvp.RequestBody = &models.VMStartParams{
@@ -588,7 +739,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					ID: &id,
 				},
 				Data: &models.VMStartParamsData{
-					HostID: &basic.HostId,
+					HostID: basic.HostId,
 				},
 			}
 			vms, err := ct.Api.VM.StartVM(uvp)
@@ -693,7 +844,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		var removes []int32
 		enabled := false
 		for _, n := range nics {
-			if n.Id == nil || *n.Id == "" {
+			if n.Id == "" {
 				// new nic
 				adds = append(adds, &models.VMNicParams{
 					ConnectVlanID: &n.VlanId,
@@ -705,10 +856,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					Model:         n.Model,
 					SubnetMask:    n.SubnetMask,
 				})
-			} else if curNicMap[*n.Id] != nil {
-				srcN := vmNics[*curNicMap[*n.Id]]
+			} else if curNicMap[n.Id] != nil {
+				srcN := vmNics[*curNicMap[n.Id]]
 				// mark consumed
-				delete(curNicMap, *n.Id)
+				delete(curNicMap, n.Id)
 				if n.VlanId == derefAny(srcN.Vlan.ID, "") &&
 					n.Enabled == derefAny(srcN.Enabled, false) &&
 					n.Mirror == derefAny(srcN.Mirror, false) &&
@@ -716,7 +867,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					continue
 				}
 				// update nic
-				idx := int32(*curNicMap[*n.Id])
+				idx := int32(*curNicMap[n.Id])
 				p := vm.NewUpdateVMNicParams()
 				p.RequestBody = &models.VMUpdateNicParams{
 					Where: &models.VMWhereInput{
@@ -731,7 +882,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 						Mirror:        n.Mirror,
 						Model:         n.Model,
 						SubnetMask:    n.SubnetMask,
-						NicID:         n.Id,
+						NicID:         &n.Id,
 						NicIndex:      &idx,
 					},
 				}
@@ -787,7 +938,6 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				return diag.FromErr(err)
 			}
 		}
-
 	}
 
 	if d.HasChange("cd_rom") {
@@ -814,38 +964,38 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		var adds []*models.VMCdRomParams
 		var removeIds []string
 		for _, v := range cdRomsData {
-			if v.Id == nil || *v.Id == "" {
+			if v.Id == "" {
 				// new cd-rom
 				adds = append(adds, &models.VMCdRomParams{
 					Boot:       &v.Boot,
-					ElfImageID: v.IsoId,
+					ElfImageID: &v.IsoId,
 					Index:      &v.Boot,
 				})
-			} else if curMap[*v.Id] != nil {
-				srcV := cdRoms[*curMap[*v.Id]]
+			} else if curMap[v.Id] != nil {
+				srcV := cdRoms[*curMap[v.Id]]
 				// mark consumed
-				delete(curMap, *v.Id)
+				delete(curMap, v.Id)
 				var srcIsoId interface{}
 				if srcV.ElfImage == nil {
 					srcIsoId = ""
 				} else {
 					srcIsoId = derefAny(srcV.ElfImage.ID, "")
 				}
-				if *v.IsoId == srcIsoId {
+				if v.IsoId == srcIsoId {
 					continue
 				}
 				// update cd-rom
 				p := vm.NewUpdateVMDiskParams()
 				var elfImageId *string
-				if v.IsoId != nil && *v.IsoId != "" {
-					elfImageId = v.IsoId
+				if v.IsoId != "" {
+					elfImageId = &v.IsoId
 				}
 				p.RequestBody = &models.VMUpdateDiskParams{
 					Where: &models.VMWhereInput{
 						ID: &id,
 					},
 					Data: &models.VMUpdateDiskParamsData{
-						VMDiskID:   v.Id,
+						VMDiskID:   &v.Id,
 						ElfImageID: elfImageId,
 					},
 				}
@@ -927,19 +1077,19 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
 		var removeIds []string
 		for _, v := range disks {
-			if v.Id == nil || *v.Id == "" {
+			if v.Id == "" {
 				// new disk
 				// TODO: reuse with create context
 				boot := int32(v.Boot)
-				if *v.VmVolumeId != "" {
+				if v.VmVolumeId != "" {
 					mountDisks = append(mountDisks, &models.MountDisksParams{
 						Boot:       &boot,
 						Bus:        &v.Bus,
-						VMVolumeID: v.VmVolumeId,
+						VMVolumeID: &v.VmVolumeId,
 						Index:      &boot,
 					})
-				} else if v.VmVolume != nil && len(*v.VmVolume) == 1 {
-					volume := *v.VmVolume
+				} else if v.VmVolume != nil && len(v.VmVolume) == 1 {
+					volume := v.VmVolume
 					mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParams{
 						Boot: &boot,
 						Bus:  &v.Bus,
@@ -947,14 +1097,14 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 							ElfStoragePolicy: &volume[0].StoragePolicy,
 							Name:             &volume[0].Name,
 							Size:             &volume[0].Size,
-							Path:             volume[0].Path,
+							Path:             &volume[0].Path,
 						},
 						Index: &boot,
 					})
 				}
-			} else if curMap[*v.Id] != nil {
+			} else if curMap[v.Id] != nil {
 				// TODO: support update vm disk
-				delete(curMap, *v.Id)
+				delete(curMap, v.Id)
 			}
 		}
 		for k := range curMap {
@@ -1048,69 +1198,76 @@ func waitVmTasksFinish(ct *cloudtower.Client, vms []*models.WithTaskVM) error {
 
 type VmBasicConfig struct {
 	Name        string
-	Vcpu        int32
-	Memory      float64
-	Ha          bool
-	HostId      string
-	FolderId    string
-	Description string
+	Vcpu        *int32
+	Memory      *int64
+	Ha          *bool
+	HostId      *string
+	FolderId    *string
+	Description *string
 	CpuCores    *int32
 	CpuSockets  *int32
 }
 
 func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
-	name := d.Get("name").(string)
-	_vcpu := d.Get("vcpu").(int)
-	vcpu := int32(_vcpu)
-	memory := d.Get("memory").(float64)
-	ha := d.Get("ha").(bool)
-	hostId := d.Get("host_id").(string)
-	folderId := d.Get("folder_id").(string)
-	description := d.Get("description").(string)
-	var cpuCores *int32
-	if _cpuCores := d.Get("cpu_cores").(int); _cpuCores != 0 {
-		i := int32(_cpuCores)
-		cpuCores = &i
-	} else {
-		i := int32(1)
-		cpuCores = &i
+	basicConfig := &VmBasicConfig{}
+	basicConfig.Name = d.Get("name").(string)
+	vcpu, ok := d.GetOk("vcpu")
+	if ok {
+		vcpu := int32(vcpu.(int))
+		basicConfig.Vcpu = &vcpu
 	}
-	var cpuSockets *int32
-	if _cpuSockets := d.Get("cpu_sockets").(int); _cpuSockets != 0 {
-		i := int32(_cpuSockets)
-		cpuSockets = &i
-	} else {
-		i := vcpu / *cpuCores
-		cpuSockets = &i
+	memory, ok := d.GetOk("memory")
+	if ok {
+		memory := int64(memory.(float64))
+		basicConfig.Memory = &memory
 	}
-
-	return &VmBasicConfig{
-		Name:        name,
-		Vcpu:        vcpu,
-		Memory:      memory,
-		Ha:          ha,
-		HostId:      hostId,
-		FolderId:    folderId,
-		Description: description,
-		CpuCores:    cpuCores,
-		CpuSockets:  cpuSockets,
-	}, nil
+	ha, ok := d.GetOkExists("ha")
+	if ok {
+		ha := ha.(bool)
+		basicConfig.Ha = &ha
+	}
+	hostId, ok := d.GetOk("host_id")
+	if ok {
+		hostId := hostId.(string)
+		basicConfig.HostId = &hostId
+	}
+	folderId, ok := d.GetOk("folder_id")
+	if ok {
+		folderId := folderId.(string)
+		basicConfig.HostId = &folderId
+	}
+	description, ok := d.GetOk("description")
+	if ok {
+		description := description.(string)
+		basicConfig.Description = &description
+	}
+	cpuCores, ok := d.GetOk("cpu_cores")
+	if ok {
+		cpuCores := int32(cpuCores.(int))
+		basicConfig.CpuCores = &cpuCores
+	}
+	cpuSockets, ok := d.GetOk("cpu_sockets")
+	if ok {
+		cpuSockets := int32(cpuSockets.(int))
+		basicConfig.CpuCores = &cpuSockets
+	}
+	return basicConfig, nil
 }
 
 type VmStatusConfig struct {
-	Status models.VMStatus
+	Status *models.VMStatus
 	Force  bool
 }
 
 func expandVmStatusConfig(d *schema.ResourceData) (*VmStatusConfig, error) {
-	var status models.VMStatus
+	var status *models.VMStatus
 	switch d.Get("status").(string) {
 	case "RUNNING":
-		status = models.VMStatusRUNNING
+		status = models.VMStatusRUNNING.Pointer()
 	case "STOPPED":
-		status = models.VMStatusSTOPPED
+		status = models.VMStatusSTOPPED.Pointer()
 	case "SUSPENDED":
-		status = models.VMStatusSUSPENDED
+		status = models.VMStatusSUSPENDED.Pointer()
 	}
 	force := d.Get("force_status_change").(bool)
 	return &VmStatusConfig{

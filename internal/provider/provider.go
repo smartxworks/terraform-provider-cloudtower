@@ -56,17 +56,19 @@ func New(version string) func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"cloudtower_datacenter": dataSourceDatacenter(),
-				"cloudtower_cluster":    dataSourceCluster(),
-				"cloudtower_vlan":       dataSourceVlan(),
-				"cloudtower_iso":        dataSourceIso(),
-				"cloudtower_host":       dataSourceHost(),
-				"cloudtower_vm":         dataSourceVm(),
+				"cloudtower_datacenter":  dataSourceDatacenter(),
+				"cloudtower_cluster":     dataSourceCluster(),
+				"cloudtower_vlan":        dataSourceVlan(),
+				"cloudtower_iso":         dataSourceIso(),
+				"cloudtower_host":        dataSourceHost(),
+				"cloudtower_vm":          dataSourceVm(),
+				"cloudtower_vm_snapshot": dataSourceVmSnapshot(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"cloudtower_datacenter": resourceDatacenter(),
-				"cloudtower_cluster":    resourceCluster(),
-				"cloudtower_vm":         resourceVm(),
+				"cloudtower_datacenter":  resourceDatacenter(),
+				"cloudtower_cluster":     resourceCluster(),
+				"cloudtower_vm":          resourceVm(),
+				"cloudtower_vm_snapshot": resourceVmSnapshot(),
 			},
 		}
 
