@@ -37,3 +37,7 @@ website/vendor
 
 vendor
 .vscode
+
+examples/variable.tf
+!examples/**/*.tf
+examples/*.tf

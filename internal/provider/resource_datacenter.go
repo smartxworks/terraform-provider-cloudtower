@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-	"github.com/smartxworks/cloudtower-go-sdk/client/datacenter"
-	"github.com/smartxworks/cloudtower-go-sdk/models"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/datacenter"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"

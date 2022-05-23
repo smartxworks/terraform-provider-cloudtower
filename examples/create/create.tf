@@ -8,18 +8,17 @@ terraform {
 }
 
 provider "cloudtower" {
-  username          = "root"
-  user_source       = "LOCAL"
-  cloudtower_server = "terraform.dev-cloudtower.smartx.com"
+  username          = var.tower_config["user"]
+  user_source       = var.tower_config["source"]
+  cloudtower_server = var.tower_config["server"]
 }
 
 data "cloudtower_datacenter" "sample_dc" {}
 
 resource "cloudtower_cluster" "sample_cluster" {
-  ip            = "192.168.17.39"
-  username      = "root"
-  password      = "tower2022"
-  datacenter_id = data.cloudtower_datacenter.sample_dc.datacenters[0].id
+  ip       = var.cluster_config["ip"]
+  username = var.cluster_config["user"]
+  password = var.cluster_config["password"]
 }
 
 data "cloudtower_vlan" "vm_vlan" {

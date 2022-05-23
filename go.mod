@@ -9,5 +9,5 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.5.1
 	github.com/hashicorp/terraform-plugin-log v0.2.1 // indirect
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/smartxworks/cloudtower-go-sdk v1.9.1-0.20220419014325-200e33a371f0
+	github.com/smartxworks/cloudtower-go-sdk/v2 v2.0.0
 )

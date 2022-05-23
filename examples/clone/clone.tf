@@ -8,18 +8,16 @@ terraform {
 }
 
 provider "cloudtower" {
-  username          = "root"
-  user_source       = "LOCAL"
-  cloudtower_server = "yinsw-terraform.dev-cloudtower.smartx.com"
+  username          = var.tower_config["user"]
+  user_source       = var.tower_config["source"]
+  cloudtower_server = var.tower_config["server"]
 }
 
-# data "cloudtower_datacenter" "sample_dc" {}
 
 resource "cloudtower_cluster" "sample_cluster" {
-  ip            = "192.168.31.156"
-  username      = "root"
-  password      = "111111"
-#  datacenter_id = data.cloudtower_datacenter.sample_dc.datacenters[0].id
+  ip       = var.cluster_config["ip"]
+  username = var.cluster_config["user"]
+  password = var.cluster_config["password"]
 }
 
 data "cloudtower_vlan" "vm_vlan" {
@@ -28,13 +26,8 @@ data "cloudtower_vlan" "vm_vlan" {
   cluster_id = cloudtower_cluster.sample_cluster.id
 }
 
-# data "cloudtower_iso" "ubuntu" {
-#   name_contains = "ubuntu"
-#   cluster_id    = cloudtower_cluster.sample_cluster.id
-# }
-
 data "cloudtower_host" "target_host" {
-  management_ip_contains = "31.156"
+  management_ip_contains = "31.16"
   cluster_id             = cloudtower_cluster.sample_cluster.id
 }
 
@@ -54,7 +47,7 @@ resource "cloudtower_vm" "tf_test" {
     boot   = 2
     iso_id = ""
   }
-  
+
   disk {
     boot = 1
     bus  = "VIRTIO"
@@ -70,15 +63,12 @@ resource "cloudtower_vm" "tf_test" {
   }
 }
 
-resource "cloudtower_vm_snapshot" "tf_test_snapshot" {
-  name        = "tf-test-snapshot"
-  vm_id       = cloudtower_vm.tf_test.id
-}
-
-resource "cloudtower_vm" "tf_test_vm_from_snapshot" {
-  name         = "tf-test-vm-from-snapshot"
-  cluster_id   = cloudtower_cluster.sample_cluster.id
-  rebuild_from = cloudtower_vm_snapshot.tf_test_snapshot.id
-  ha           = false
-  memory       = 2 * 1024 * 1024 * 1024
+resource "cloudtower_vm" "tf_test_cloned-vm" {
+  name       = "tf-test-cloned-vm"
+  cluster_id = cloudtower_cluster.sample_cluster.id
+  create_effect {
+    clone_from_vm = cloudtower_vm.tf_test.id
+  }
+  ha     = false
+  memory = 2 * 1024 * 1024 * 1024
 }

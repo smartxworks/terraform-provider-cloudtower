@@ -3,17 +3,18 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-	"github.com/smartxworks/cloudtower-go-sdk/client/vm"
-	"github.com/smartxworks/cloudtower-go-sdk/client/vm_disk"
-	"github.com/smartxworks/cloudtower-go-sdk/client/vm_nic"
-	"github.com/smartxworks/cloudtower-go-sdk/client/vm_volume"
-	"github.com/smartxworks/cloudtower-go-sdk/models"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_disk"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_nic"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_volume"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 )
 
 func resourceVm() *schema.Resource {
@@ -239,12 +240,27 @@ func resourceVm() *schema.Resource {
 					},
 				},
 			},
-			// snapshot
-			"rebuild_from": {
-				Type:        schema.TypeString,
-				Description: "Vm is rebuild from target snapshot",
-				Optional:    true,
-				ForceNew:    true,
+			// create vm from another resource, template, snapshot or source vm
+			"create_effect": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"clone_from_vm": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Id of source vm from created vm to be cloned from",
+						},
+						"rebuild_from_snapshot": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Id of snapshot for created vm to be rebuilt from",
+						},
+					},
+				},
 			},
 			"rollback_to": {
 				Type:        schema.TypeString,
@@ -462,7 +478,11 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 	var vms []*models.WithTaskVM
-	if rebuildFrom := d.Get("rebuild_from").(string); rebuildFrom != "" {
+	rebuildFrom := d.Get("create_effect.0.rebuild_from_snapshot").(string)
+	cloneFrom := d.Get("create_effect.0.clone_from_vm").(string)
+	if rebuildFrom != "" && cloneFrom != "" {
+		return diag.FromErr(fmt.Errorf("rebuild_from_snapshot and clone_from_vm can not be set at the same time"))
+	} else if rebuildFrom != "" {
 		// rebuild from target snapshot
 		rp := vm.NewRebuildVMParams()
 		rp.RequestBody = []*models.VMRebuildParams{
@@ -490,6 +510,41 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 			},
 		}
 		response, err := ct.Api.VM.RebuildVM(rp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		vms = response.Payload
+	} else if cloneFrom != "" {
+		cp := vm.NewCloneVMParams()
+		var diskParams *models.VMDiskParams = nil
+		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
+			diskParams = &models.VMDiskParams{
+				MountCdRoms:         cdRoms,
+				MountDisks:          mountDisks,
+				MountNewCreateDisks: mountNewCreateDisks,
+			}
+		}
+		cp.RequestBody = []*models.VMCloneParams{
+			{
+				Name:        &basic.Name,
+				ClusterID:   clusterId,
+				Vcpu:        basic.Vcpu,
+				Memory:      basic.Memory,
+				Ha:          basic.Ha,
+				Firmware:    firmware,
+				Status:      status.Status,
+				HostID:      basic.HostId,
+				FolderID:    basic.FolderId,
+				Description: basic.Description,
+				GuestOsType: guestOsType,
+				CPUCores:    basic.CpuCores,
+				CPUSockets:  basic.CpuSockets,
+				VMDisks:     diskParams,
+				VMNics:      vmNics,
+				SrcVMID:     &cloneFrom,
+			},
+		}
+		response, err := ct.Api.VM.CloneVM(cp)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -752,13 +807,13 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		case models.VMStatusSTOPPED:
 			if status.Force {
-				uvp := vm.NewForceShutDownVMParams()
+				uvp := vm.NewPoweroffVMParams()
 				uvp.RequestBody = &models.VMOperateParams{
 					Where: &models.VMWhereInput{
 						ID: &id,
 					},
 				}
-				vms, err := ct.Api.VM.ForceShutDownVM(uvp)
+				vms, err := ct.Api.VM.PoweroffVM(uvp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
