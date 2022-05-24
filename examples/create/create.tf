@@ -7,6 +7,12 @@ terraform {
   }
 }
 
+locals {
+  GB = 1024 * local.MB
+  MB = 1024 * local.KB
+  KB = 1024
+}
+
 provider "cloudtower" {
   username          = var.tower_config["user"]
   user_source       = var.tower_config["source"]
@@ -43,7 +49,7 @@ resource "cloudtower_vm" "tf_test" {
   cluster_id          = cloudtower_cluster.sample_cluster.id
   host_id             = data.cloudtower_host.target_host.hosts[0].id
   vcpu                = 4
-  memory              = 8 * 1024 * 1024 * 1024
+  memory              = 8 * local.GB
   ha                  = true
   firmware            = "BIOS"
   status              = "STOPPED"
@@ -61,7 +67,7 @@ resource "cloudtower_vm" "tf_test" {
     vm_volume {
       storage_policy = "REPLICA_2_THIN_PROVISION"
       name           = "d1"
-      size           = 10 * 1024 * 1024 * 1024
+      size           = 10 * local.GB
     }
   }
 
@@ -71,7 +77,7 @@ resource "cloudtower_vm" "tf_test" {
     vm_volume {
       storage_policy = "REPLICA_3_THICK_PROVISION"
       name           = "d2"
-      size           = 1 * 1024 * 1024 * 1024
+      size           = 1 * local.GB
     }
   }
 

@@ -775,9 +775,6 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		if basic.Memory == nil {
 			missingFields = append(missingFields, "memory")
 		}
-		if basic.HostId == nil {
-			missingFields = append(missingFields, "host_id")
-		}
 		if clusterId == nil {
 			missingFields = append(missingFields, "cluster_id")
 		}
@@ -1069,14 +1066,18 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	if d.HasChange("host_id") {
 		hostId := d.Get("host_id").(string)
+		var mvpd *models.VMMigrateParamsData = nil
+		if hostId != "" {
+			mvpd = &models.VMMigrateParamsData{
+				HostID: &hostId,
+			}
+		}
 		mvp := vm.NewMigRateVMParams()
 		mvp.RequestBody = &models.VMMigrateParams{
 			Where: &models.VMWhereInput{
 				ID: &id,
 			},
-			Data: &models.VMMigrateParamsData{
-				HostID: &hostId,
-			},
+			Data: mvpd,
 		}
 		vms, err := ct.Api.VM.MigRateVM(mvp)
 		if err != nil {
