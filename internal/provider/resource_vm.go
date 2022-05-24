@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -253,11 +254,153 @@ func resourceVm() *schema.Resource {
 							ForceNew:    true,
 							Description: "Id of source vm from created vm to be cloned from",
 						},
+						"clone_from_template": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Id of source VM template to be cloned",
+						},
 						"rebuild_from_snapshot": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
 							Description: "Id of snapshot for created vm to be rebuilt from",
+						},
+					},
+				},
+			},
+			"is_full_copy": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "If the vm is full copy from template or not",
+			},
+			"cloud_init": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				MaxItems:    1,
+				Description: "Set up cloud-init config when create vm from template",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"default_user_password": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Password of default user",
+						},
+						"nameservers": {
+							Type: schema.TypeList,
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+							},
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Name server address list. At most 3 name servers are allowed.",
+						},
+						"public_keys": {
+							Type: schema.TypeList,
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+							},
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Add a list of public keys for the cloud-init default user.At most 10 public keys can be added to the list.",
+						},
+						"networks": {
+							Type:     schema.TypeList,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"ip_address": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										ForceNew:    true,
+										Description: "IPv4 address. This field is only used when type is not set to ipv4_dhcp.",
+									},
+									"netmask": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										ForceNew:    true,
+										Description: "Netmask. This field is only used when type is not set to ipv4_dhcp.",
+									},
+									"nic_index": {
+										Type:        schema.TypeInt,
+										Required:    true,
+										ForceNew:    true,
+										Description: "Index of VM NICs. The index starts at 0, which refers to the first NIC.At most 16 NICs are supported, so the index range is [0, 15].",
+									},
+									"routes": {
+										Type:        schema.TypeList,
+										Optional:    true,
+										ForceNew:    true,
+										MaxItems:    1,
+										Description: "Static route list",
+										Elem: &schema.Resource{
+											Schema: map[string]*schema.Schema{
+												"gateway": {
+													Type:        schema.TypeString,
+													Optional:    true,
+													ForceNew:    true,
+													Description: "Gateway to access the static route address.",
+												},
+												"netmask": {
+													Type:        schema.TypeString,
+													Optional:    true,
+													ForceNew:    true,
+													Description: "Netmask of the network",
+												},
+												"network": {
+													Type:        schema.TypeString,
+													Optional:    true,
+													ForceNew:    true,
+													Description: "Static route network address. If set to 0.0.0.0, then first use the user settings to configure the default route.",
+												},
+											},
+										},
+									},
+									"type": {
+										Type:        schema.TypeString,
+										Required:    true,
+										ForceNew:    true,
+										Description: "Network type. Allowed enum values are ipv4, ipv4_dhcp.",
+										ValidateDiagFunc: func(v interface{}, _ cty.Path) diag.Diagnostics {
+											var diags diag.Diagnostics
+											val, ok := v.(string)
+											if !ok {
+												return append(diags, diag.Diagnostic{
+													Severity: diag.Error,
+													Summary:  "Wrong type",
+													Detail:   "type should be a string",
+												})
+											} else if val != string(models.CloudInitNetworkTypeEnumIPV4) && val != string(models.CloudInitNetworkTypeEnumIPV4DHCP) {
+												return append(diags, diag.Diagnostic{
+													Severity: diag.Error,
+													Summary:  "Invalid type",
+													Detail: fmt.Sprintf("type should be one of %v, but get %s",
+														[]string{string(models.CloudInitNetworkTypeEnumIPV4), string(models.CloudInitNetworkTypeEnumIPV4DHCP)},
+														val,
+													),
+												})
+											}
+											return diags
+										},
+									},
+								},
+							},
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Network configuration list.",
+						},
+						"hostname": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "hostname",
+						},
+						"user_data": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "User-provided cloud-init user-data field. Base64 encoding is not supported. Size limit: 32KiB.",
 						},
 					},
 				},
@@ -480,8 +623,16 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	var vms []*models.WithTaskVM
 	rebuildFrom := d.Get("create_effect.0.rebuild_from_snapshot").(string)
 	cloneFrom := d.Get("create_effect.0.clone_from_vm").(string)
-	if rebuildFrom != "" && cloneFrom != "" {
-		return diag.FromErr(fmt.Errorf("rebuild_from_snapshot and clone_from_vm can not be set at the same time"))
+	cloneFromTemplate := d.Get("create_effect.0.clone_from_template").(string)
+	effects := d.Get("create_effect.0").(map[string]interface{})
+	count := 0
+	for k := range effects {
+		if effects[k] != "" {
+			count = count + 1
+		}
+	}
+	if count >= 2 {
+		return diag.FromErr(fmt.Errorf("can only set one create effect"))
 	} else if rebuildFrom != "" {
 		// rebuild from target snapshot
 		rp := vm.NewRebuildVMParams()
@@ -545,6 +696,42 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 			},
 		}
 		response, err := ct.Api.VM.CloneVM(cp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		vms = response.Payload
+	} else if cloneFromTemplate != "" {
+		isFullCopyRes, ok := d.GetOkExists("is_full_copy")
+		if !ok {
+			return diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
+		}
+		isFullCopy := isFullCopyRes.(bool)
+		cvft := vm.NewCreateVMFromTemplateParams()
+		cloudInit, err := expandCloudInitConfig(d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{
+			{
+				IsFullCopy:  &isFullCopy,
+				Name:        &basic.Name,
+				ClusterID:   clusterId,
+				HostID:      basic.HostId,
+				Description: basic.Description,
+				Vcpu:        basic.Vcpu,
+				FolderID:    basic.FolderId,
+				GuestOsType: guestOsType,
+				Memory:      basic.Memory,
+				CPUCores:    basic.CpuCores,
+				CPUSockets:  basic.CpuSockets,
+				Ha:          basic.Ha,
+				Firmware:    firmware,
+				TemplateID:  &cloneFromTemplate,
+				VMNics:      vmNics,
+				CloudInit:   cloudInit,
+			},
+		}
+		response, err := ct.Api.VM.CreateVMFromTemplate(cvft)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1307,6 +1494,65 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 		basicConfig.CpuCores = &cpuSockets
 	}
 	return basicConfig, nil
+}
+
+func expandCloudInitConfig(d *schema.ResourceData) (*models.VMCreateVMFromTemplateParamsCloudInit, error) {
+	cloudInit := &models.VMCreateVMFromTemplateParamsCloudInit{}
+	defaultPassword, ok := d.GetOk("cloud_init.0.default_user_password")
+	if ok {
+		defaultPassword := defaultPassword.(string)
+		cloudInit.DefaultUserPassword = &defaultPassword
+	}
+	nameservers, ok := d.GetOk("cloud_init.0.nameservers")
+	if ok {
+		bytes, err := json.Marshal(nameservers)
+		if err != nil {
+			return nil, err
+		}
+		nameservers := make([]string, 0)
+		err = json.Unmarshal(bytes, &nameservers)
+		if err != nil {
+			return nil, err
+		}
+		cloudInit.Nameservers = nameservers
+	}
+	publicKeys, ok := d.GetOk("cloud_init.0.public_keys")
+	if ok {
+		bytes, err := json.Marshal(publicKeys)
+		if err != nil {
+			return nil, err
+		}
+		publicKeys := make([]string, 0)
+		err = json.Unmarshal(bytes, &publicKeys)
+		if err != nil {
+			return nil, err
+		}
+		cloudInit.PublicKeys = publicKeys
+	}
+	hostName, ok := d.GetOk("cloud_init.0.hostname")
+	if ok {
+		hostName := hostName.(string)
+		cloudInit.Hostname = &hostName
+	}
+	userData, ok := d.GetOk("cloud_init.0.user_data")
+	if ok {
+		userData := userData.(string)
+		cloudInit.UserData = &userData
+	}
+	networks, ok := d.GetOk("cloud_init.0.networks")
+	if ok {
+		bytes, err := json.Marshal(networks)
+		if err != nil {
+			return nil, err
+		}
+		var networks []*models.CloudInitNetWork
+		err = json.Unmarshal(bytes, &networks)
+		if err != nil {
+			return nil, err
+		}
+		cloudInit.Networks = networks
+	}
+	return cloudInit, nil
 }
 
 type VmStatusConfig struct {
