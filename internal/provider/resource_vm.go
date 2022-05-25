@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hasura/go-graphql-client"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_disk"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_nic"
@@ -38,26 +40,31 @@ func resourceVm() *schema.Resource {
 			"cluster_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's cluster id",
 			},
 			"vcpu": {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's vcpu",
 			},
 			"memory": {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: "VM's memory, in the unit of byte",
 			},
 			"ha": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Computed:    true,
 				Description: "whether VM is HA or not",
 			},
 			"firmware": {
 				Type:         schema.TypeString,
 				Optional:     true,
+				Computed:     true,
 				Description:  "VM's firmware",
 				ValidateFunc: validation.StringInSlice([]string{"BIOS", "UEFI"}, false),
 			},
@@ -94,6 +101,7 @@ func resourceVm() *schema.Resource {
 						"vm_volume_id": {
 							Type:        schema.TypeString,
 							Optional:    true,
+							Computed:    true,
 							Description: "use an existing VM volume as a VM disk, by specific it's id",
 						},
 						"vm_volume": {
@@ -487,6 +495,16 @@ type VmNic struct {
 	Idx    int    `json:"idx"`
 }
 
+type VmUpdateInput map[string]interface{}
+type UpdateVmEffect map[string]interface{}
+type VmWhereUniqueInput map[string]interface{}
+
+var updateVm struct {
+	UpdateVm struct {
+		Id graphql.String
+	} `graphql:"updateVm(data: $data, effect: $effect,where:$where)"`
+}
+
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
 
@@ -840,16 +858,45 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diags
 	}
 
-	// if err := d.Set("name", v.Name); err != nil {
-	// 	return diag.FromErr(err)
-	// }
-	if err := d.Set("host_id", v.Host.ID); err != nil {
+	// set computed variables
+	if err := d.Set("cluster_id", v.Cluster.ID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("vcpu", v.Vcpu); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("memory", v.Memory); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("ha", v.Ha); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("firmware", v.Firmware); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("status", v.Status); err != nil {
 		return diag.FromErr(err)
 	}
-
+	if err := d.Set("host_id", v.Host.ID); err != nil {
+		return diag.FromErr(err)
+	}
+	if v.Folder != nil {
+		if err := d.Set("folder_id", v.Folder.ID); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	if err := d.Set("description", v.Description); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("guest_os_type", v.GuestOsType); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("cpu_cores", v.CPU.Cores); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("cpu_sockets", v.CPU.Sockets); err != nil {
+		return diag.FromErr(err)
+	}
 	vmNics, diags := readVmNics(ctx, d, ct)
 	if diags != nil {
 		return diags
@@ -896,6 +943,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 			"vm_volume": []map[string]interface{}{
 				vmVolumeData,
 			},
+			"vm_volume_id": d.VMVolume.ID,
 		})
 	}
 	if err := d.Set("disk", disks); err != nil {
@@ -927,7 +975,441 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
 	id := d.Id()
+	originalVm, _ := readVm(ctx, d, ct)
+	var updateParams VmUpdateInput = make(map[string]interface{})
+	// handle update data first, if there is error in data, will not execute other mutation
+	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
+		basic, err := expandVmBasicConfig(d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		updateParams["name"] = basic.Name
+		if basic.Memory != nil {
+			updateParams["memory"] = *basic.Memory
+		}
+		if basic.Ha != nil {
+			updateParams["ha"] = *basic.Ha
+		}
+		if basic.Description != nil {
+			updateParams["description"] = *basic.Description
+		}
+		if basic.CpuCores == nil || basic.CpuSockets == nil || basic.Vcpu == nil {
+			if basic.CpuCores == nil {
+				if basic.CpuSockets == nil {
+					// do nothing if nothing of cpu config has changed
+					if basic.Vcpu != nil {
+						updateParams["vcpu"] = *basic.Vcpu
+						if *basic.Vcpu%*originalVm.CPU.Sockets == 0 {
+							newCore := *basic.Vcpu / *originalVm.CPU.Sockets
+							updateParams["cpu"] = map[string]int32{
+								"cores":   newCore,
+								"sockets": *originalVm.CPU.Sockets,
+							}
+						} else if *basic.Vcpu%*originalVm.CPU.Cores == 0 {
+							newSockets := *basic.Vcpu / *originalVm.CPU.Cores
+							updateParams["cpu"] = map[string]int32{
+								"cores":   *originalVm.CPU.Cores,
+								"sockets": newSockets,
+							}
+						} else {
+							updateParams["cpu"] = map[string]int32{
+								"cores":   *basic.Vcpu,
+								"sockets": 1,
+							}
+						}
+					}
+				}
+			} else if basic.CpuSockets == nil {
+				if basic.Vcpu == nil {
+					updateParams["vcpu"] = (*originalVm.CPU.Sockets) * (*basic.CpuCores)
+					updateParams["cpu"] = map[string]int32{
+						"cores":   *basic.CpuCores,
+						"sockets": *originalVm.CPU.Sockets,
+					}
+				} else {
+					updateParams["vcpu"] = *basic.Vcpu
+					if *basic.Vcpu%*basic.CpuCores == 0 {
+						newSocket := *basic.Vcpu / *basic.CpuCores
+						updateParams["cpu"] = map[string]int32{
+							"cores":   *basic.CpuCores,
+							"sockets": newSocket,
+						}
+					} else {
+						return diag.Errorf("vcpu must be divisible by number of cpu cores")
+					}
+				}
+			} else {
+				updateParams["vcpu"] = (*basic.CpuSockets) * (*basic.CpuCores)
+				updateParams["cpu"] = map[string]int32{
+					"cores":   *basic.CpuCores,
+					"sockets": *basic.CpuSockets,
+				}
+			}
+		} else {
+			updateParams["vcpu"] = *basic.Vcpu
+			updateParams["cpu"] = map[string]int32{
+				"cores":   *basic.CpuCores,
+				"sockets": *basic.CpuSockets,
+			}
+		}
+	}
 
+	if d.HasChange("nic") {
+		// delete all previous vm nic
+		nicsToDelete := make([]map[string]interface{}, 0)
+		nicsToCreate := make([]map[string]interface{}, 0)
+		vmNics, diags := readVmNics(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		for _, n := range vmNics {
+			nicsToDelete = append(nicsToDelete, map[string]interface{}{
+				"id": *n.ID,
+			})
+		}
+		var nics []*VmNic
+		bytes, err := json.Marshal(d.Get("nic"))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &nics)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		for _, n := range nics {
+			var nicId string = ""
+			if n.NicID != nil {
+				nicId = *n.ConnectVlanID
+			}
+			var vlanId string = ""
+			if n.ConnectVlanID != nil {
+				vlanId = *n.ConnectVlanID
+			}
+			nicsToCreate = append(nicsToCreate,
+				map[string]interface{}{
+					"enabled":     *n.Enabled,
+					"gateway":     *n.Gateway,
+					"ip_address":  *n.IPAddress,
+					"local_id":    *n.LocalID,
+					"mac_address": *n.MacAddress,
+					"model":       *n.Model,
+					"nic": map[string]interface{}{
+						"connect": map[string]interface{}{
+							"id": nicId,
+						},
+					},
+					"subnet_mask": *n.SubnetMask,
+					"vlan": map[string]interface{}{
+						"connect": map[string]interface{}{
+							"id": vlanId,
+						},
+					},
+				})
+		}
+		updateParams["vm_nics"] = map[string]interface{}{
+			"create": nicsToCreate,
+			"delete": nicsToDelete,
+		}
+	}
+
+	if d.HasChanges("cd_rom", "disk") {
+		diskToCreate := make([]map[string]interface{}, 0)
+		diskToUpdate := make([]map[string]interface{}, 0)
+		diskToDelete := make([]map[string]interface{}, 0)
+		cdRoms, diags := readCdRoms(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		vmDisks, vmVolumes, diags := readVmDisks(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		curVolumeMap := make(map[string]*models.VMVolume, 0)
+		for _, v := range vmVolumes {
+			curVolumeMap[*v.ID] = v
+		}
+		if d.HasChange("cd_rom") {
+			curMap := make(map[string]*models.VMDisk, 0)
+			for _, v := range cdRoms {
+				curMap[*v.ID] = v
+			}
+			var cdRomsData []*CdRom
+			bytes, err := json.Marshal(d.Get("cd_rom"))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = json.Unmarshal(bytes, &cdRomsData)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			// push all current cd_rom to update, ignore deleted cd-rom, tower will handle it
+			for _, cr := range cdRomsData {
+				// for existing cd_rom, update it
+				origin := curMap[cr.Id]
+				if origin != nil {
+					var data = make(map[string]interface{})
+					data["boot"] = cr.Boot
+					data["bus"] = *origin.Bus
+					data["key"] = *origin.Key
+					data["disabled"] = *origin.Disabled
+					data["type"] = models.VMDiskTypeCDROM
+					if origin.ElfImage != nil && cr.IsoId == "" {
+						data["elf_image"] = map[string]interface{}{
+							"disconnect": true,
+						}
+					} else if !(cr.IsoId == "" && origin.ElfImage == nil) &&
+						!(origin.ElfImage != nil && cr.IsoId == *origin.ElfImage.ID) {
+						data["elf_image"] = map[string]interface{}{
+							"connect": map[string]interface{}{
+								"id": cr.IsoId,
+							},
+						}
+					}
+					diskToUpdate = append(diskToUpdate, map[string]interface{}{
+						"where": map[string]interface{}{"id": cr.Id},
+						"data":  data,
+					})
+				} else {
+					var data = make(map[string]interface{})
+					data["boot"] = cr.Boot
+					data["bus"] = models.BusIDE
+					data["type"] = models.VMDiskTypeCDROM
+					if cr.IsoId != "" {
+						data["elf_image"] = map[string]interface{}{
+							"connect": map[string]interface{}{
+								"id": cr.IsoId,
+							},
+						}
+					}
+					diskToCreate = append(diskToCreate, data)
+				}
+			}
+		} else {
+			// keep original cd_rom
+			for _, v := range cdRoms {
+				diskToUpdate = append(diskToUpdate, map[string]interface{}{
+					"where": map[string]interface{}{"id": *v.ID},
+					"data": map[string]interface{}{
+						"boot":     *v.Boot,
+						"bus":      *v.Bus,
+						"key":      *v.Key,
+						"type":     models.VMDiskTypeCDROM,
+						"disabled": *v.Disabled,
+					},
+				})
+			}
+		}
+		if d.HasChange("disk") {
+			curMap := make(map[string]*models.VMDisk, 0)
+			for _, v := range vmDisks {
+				// use volume id as key
+				curMap[*v.VMVolume.ID] = v
+			}
+			var disks []*VmDisk
+			bytes, err := json.Marshal(d.Get("disk"))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			err = json.Unmarshal(bytes, &disks)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			for _, vd := range disks {
+				origin := curMap[vd.VmVolumeId]
+				originVolume := curVolumeMap[vd.VmVolumeId]
+				if vd.VmVolumeId != "" {
+					if origin != nil {
+						// if given volume is mounted, update it
+						var data = make(map[string]interface{})
+						data["boot"] = vd.Boot
+						data["bus"] = vd.Bus
+						data["type"] = *origin.Type
+						if len(vd.VmVolume) > 0 {
+							newVolume := vd.VmVolume[0]
+							if newVolume.Name != *originVolume.Name {
+								//FIXME: move all invalid change detection to customizeDiffFunc
+								return diag.Errorf("mounted disk %s's name can not be changed", *originVolume.Name)
+							}
+							if newVolume.Size < *originVolume.Size {
+								return diag.Errorf("Disk %s's size can not shrink", *originVolume.Name)
+							}
+							if newVolume.StoragePolicy != *originVolume.ElfStoragePolicy {
+								return diag.Errorf("mounted disk %s's storage policy can not be changed", *originVolume.Name)
+							}
+							data["vm_volume"] = map[string]interface{}{
+								"create": map[string]interface{}{
+									"name":               *originVolume.Name,
+									"path":               newVolume.Path,
+									"size":               newVolume.Size,
+									"elf_storage_policy": *originVolume.ElfStoragePolicy,
+									"local_created_at":   "",
+									"local_id":           "",
+									"mounting":           *originVolume.Mounting,
+									"sharing":            *originVolume.Sharing,
+									"cluster": map[string]interface{}{
+										"connect": map[string]interface{}{
+											"id": "",
+										},
+									},
+								},
+							}
+
+						} else if originVolume != nil {
+							// use original volume
+							data["vm_volume"] = map[string]interface{}{
+								"create": map[string]interface{}{
+									"name":               *originVolume.Name,
+									"path":               *originVolume.Path,
+									"size":               *originVolume.Size,
+									"elf_storage_policy": *originVolume.ElfStoragePolicy,
+									"local_created_at":   "",
+									"local_id":           "",
+									"mounting":           *originVolume.Mounting,
+									"sharing":            *originVolume.Sharing,
+									"cluster": map[string]interface{}{
+										"connect": map[string]interface{}{
+											"id": "",
+										},
+									},
+								},
+							}
+						}
+						diskToUpdate = append(diskToUpdate, map[string]interface{}{
+							"where": map[string]interface{}{
+								"id": vd.Id,
+							},
+							"data": data,
+						})
+						delete(curMap, vd.VmVolumeId)
+					} else {
+						// if giving volume is not mounted, mount it
+						var data = make(map[string]interface{})
+						data["boot"] = vd.Boot
+						data["bus"] = vd.Bus
+						data["type"] = models.VMDiskTypeDISK
+						data["vm_volume"] = map[string]interface{}{
+							"connect": map[string]interface{}{
+								"id": vd.VmVolumeId,
+							},
+						}
+						diskToCreate = append(diskToCreate, data)
+					}
+				} else if len(vd.VmVolume) > 0 {
+					// no volume is given, but VmVolume is configured  mean we need to create one
+					var data = make(map[string]interface{})
+					data["boot"] = vd.Boot
+					data["bus"] = vd.Bus
+					data["type"] = models.VMDiskTypeDISK
+					data["vm_volume"] = map[string]interface{}{
+						"create": map[string]interface{}{
+							"name":               vd.VmVolume[0].Name,
+							"path":               "",
+							"size":               vd.VmVolume[0].Size,
+							"elf_storage_policy": vd.VmVolume[0].StoragePolicy,
+							"local_created_at":   "",
+							"local_id":           "",
+							"mounting":           true,
+							"sharing":            false,
+							"cluster": map[string]interface{}{
+								"connect": map[string]interface{}{
+									"id": "",
+								},
+							},
+						},
+					}
+				}
+				for _, d := range curMap {
+					diskToDelete = append(diskToDelete, map[string]interface{}{
+						"id": *d.ID,
+					})
+				}
+			}
+		} else {
+			// keep original disks
+			for _, v := range vmDisks {
+				var originVmVolume = curVolumeMap[*v.VMVolume.ID]
+				if originVmVolume != nil {
+					diskToUpdate = append(diskToUpdate, map[string]interface{}{
+						"where": map[string]interface{}{
+							"id": *v.ID,
+						},
+						"data": map[string]interface{}{
+							"boot": *v.Boot,
+							"bus":  *v.Bus,
+							"type": models.VMDiskTypeDISK,
+							"vm_volume": map[string]interface{}{
+								"create": map[string]interface{}{
+									"cluster": map[string]interface{}{
+										"id": "",
+									},
+								},
+								"elf_storage_policy": *originVmVolume.ElfStoragePolicy,
+								"local_created_at":   "",
+								"local_id":           "",
+								"mouting":            *originVmVolume.Mounting,
+								"sharing":            *originVmVolume.Sharing,
+								"name":               *originVmVolume.Name,
+								"path":               *originVmVolume.Path,
+								"size":               *originVmVolume.Size,
+							},
+						},
+					})
+				}
+			}
+		}
+		sort.SliceStable(diskToCreate, func(i, j int) bool {
+			var boot_i int
+			switch diskToCreate[i]["boot"].(type) {
+			case int:
+				boot_i = diskToCreate[i]["boot"].(int)
+			case int32:
+				boot_i = int(diskToCreate[i]["boot"].(int32))
+			case int64:
+				boot_i = int(diskToCreate[i]["boot"].(int64))
+			}
+			var boot_j int
+			switch diskToCreate[j]["boot"].(type) {
+			case int:
+				boot_j = diskToCreate[j]["boot"].(int)
+			case int32:
+				boot_j = int(diskToCreate[j]["boot"].(int32))
+			case int64:
+				boot_j = int(diskToCreate[j]["boot"].(int64))
+			}
+			return boot_i < boot_j
+		})
+
+		sort.SliceStable(diskToUpdate, func(i, j int) bool {
+			data_i := diskToUpdate[i]["data"].(map[string]interface{})
+			data_j := diskToUpdate[j]["data"].(map[string]interface{})
+
+			var boot_i int
+			switch data_i["boot"].(type) {
+			case int:
+				boot_i = data_i["boot"].(int)
+			case int32:
+				boot_i = int(data_i["boot"].(int32))
+			case int64:
+				boot_i = int(data_i["boot"].(int64))
+			}
+			var boot_j int
+			switch data_j["boot"].(type) {
+			case int:
+				boot_j = data_j["boot"].(int)
+			case int32:
+				boot_j = int(data_j["boot"].(int32))
+			case int64:
+				boot_j = int(data_j["boot"].(int64))
+			}
+			return boot_i < boot_j
+		})
+
+		updateParams["vm_disks"] = map[string]interface{}{
+			"create": diskToCreate,
+			"update": diskToUpdate,
+			"delete": diskToDelete,
+		}
+	}
 	// rollback vm to target state first if rollback_to not match rollback from
 	if d.HasChange("rollback_to") {
 		rawRollbackTo, ok := d.GetOk("rollback_to")
@@ -954,37 +1436,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		}
 	}
-
-	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
-		basic, err := expandVmBasicConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		uvp := vm.NewUpdateVMParams()
-		uvp.RequestBody = &models.VMUpdateParams{
-			Where: &models.VMWhereInput{
-				ID: &id,
-			},
-			Data: &models.VMUpdateParamsData{
-				Name:        &basic.Name,
-				Vcpu:        basic.Vcpu,
-				Memory:      basic.Memory,
-				Description: basic.Description,
-				Ha:          basic.Ha,
-				CPUCores:    basic.CpuCores,
-				CPUSockets:  basic.CpuSockets,
-			},
-		}
-		vms, err := ct.Api.VM.UpdateVM(uvp)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = waitVmTasksFinish(ct, vms.Payload)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
+	// change vm status first as some change could not make in some status
 	if d.HasChange("status") {
 		basic, err := expandVmBasicConfig(d)
 		if err != nil {
@@ -1063,10 +1515,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
+	// then migrate the vm if needed
 	if d.HasChange("host_id") {
 		hostId := d.Get("host_id").(string)
 		var mvpd *models.VMMigrateParamsData = nil
-		if hostId != "" {
+		// if set to AUTO_SCHEDULE, try to auto migrate to the proper host
+		if hostId != "" && hostId != "AUTO_SCHEDULE" {
 			mvpd = &models.VMMigrateParamsData{
 				HostID: &hostId,
 			}
@@ -1088,338 +1542,18 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
-	if d.HasChange("nic") {
-		vmNics, diags := readVmNics(ctx, d, ct)
-		if diags != nil {
-			return diags
-		}
-		curNicMap := make(map[string]*int, 0)
-		for idx, n := range vmNics {
-			_idx := idx
-			curNicMap[*n.ID] = &_idx
-		}
-		var nics []*VmNic
-		bytes, err := json.Marshal(d.Get("nic"))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &nics)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		var adds []*models.VMNicParams
-		var removes []int32
-		enabled := false
-		for _, n := range nics {
-			if n.Id == "" {
-				// new nic
-				adds = append(adds, &models.VMNicParams{
-					ConnectVlanID: &n.VlanId,
-					Enabled:       n.Enabled,
-					Gateway:       n.Gateway,
-					IPAddress:     n.IPAddress,
-					MacAddress:    n.MacAddress,
-					Mirror:        n.Mirror,
-					Model:         n.Model,
-					SubnetMask:    n.SubnetMask,
-				})
-			} else if curNicMap[n.Id] != nil {
-				srcN := vmNics[*curNicMap[n.Id]]
-				// mark consumed
-				delete(curNicMap, n.Id)
-				if n.VlanId == derefAny(srcN.Vlan.ID, "") &&
-					n.Enabled == derefAny(srcN.Enabled, false) &&
-					n.Mirror == derefAny(srcN.Mirror, false) &&
-					n.Model == derefAny(*srcN.Model, "") {
-					continue
-				}
-				// update nic
-				idx := int32(*curNicMap[n.Id])
-				p := vm.NewUpdateVMNicParams()
-				p.RequestBody = &models.VMUpdateNicParams{
-					Where: &models.VMWhereInput{
-						ID: &id,
-					},
-					Data: &models.VMUpdateNicParamsData{
-						ConnectVlanID: &n.VlanId,
-						Enabled:       &enabled,
-						Gateway:       n.Gateway,
-						IPAddress:     n.IPAddress,
-						MacAddress:    n.MacAddress,
-						Mirror:        n.Mirror,
-						Model:         n.Model,
-						SubnetMask:    n.SubnetMask,
-						NicID:         &n.Id,
-						NicIndex:      &idx,
-					},
-				}
-				vms, err := ct.Api.VM.UpdateVMNic(p)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				err = waitVmTasksFinish(ct, vms.Payload)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-			}
-		}
-		for _, v := range curNicMap {
-			removeIdx := int32(*v)
-			removes = append(removes, removeIdx)
-		}
-		if len(removes) > 0 {
-			p := vm.NewRemoveVMNicParams()
-			p.RequestBody = &models.VMRemoveNicParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMRemoveNicParamsData{
-					NicIndex: removes,
-				},
-			}
-			vms, err := ct.Api.VM.RemoveVMNic(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-		if len(adds) > 0 {
-			p := vm.NewAddVMNicParams()
-			p.RequestBody = &models.VMAddNicParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMAddNicParamsData{
-					VMNics: adds,
-				},
-			}
-			vms, err := ct.Api.VM.AddVMNic(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
+	// execute vm updation in the last
+	err := ct.GraphqlApi.Mutate(context.Background(), &updateVm, map[string]interface{}{
+		"data":   updateParams,
+		"effect": UpdateVmEffect{},
+		"where": VmWhereUniqueInput{
+			"id": d.Id(),
+		},
+	}, graphql.OperationName("updateVm"))
+	if err != nil {
+		return diag.FromErr(err)
 	}
-
-	if d.HasChange("cd_rom") {
-		cdRoms, diags := readCdRoms(ctx, d, ct)
-		if diags != nil {
-			return diags
-		}
-		curMap := make(map[string]*int, 0)
-		for idx, v := range cdRoms {
-			_idx := idx
-			curMap[*v.ID] = &_idx
-		}
-
-		var cdRomsData []*CdRom
-		bytes, err := json.Marshal(d.Get("cd_rom"))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &cdRomsData)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-
-		var adds []*models.VMCdRomParams
-		var removeIds []string
-		for _, v := range cdRomsData {
-			if v.Id == "" {
-				// new cd-rom
-				adds = append(adds, &models.VMCdRomParams{
-					Boot:       &v.Boot,
-					ElfImageID: &v.IsoId,
-					Index:      &v.Boot,
-				})
-			} else if curMap[v.Id] != nil {
-				srcV := cdRoms[*curMap[v.Id]]
-				// mark consumed
-				delete(curMap, v.Id)
-				var srcIsoId interface{}
-				if srcV.ElfImage == nil {
-					srcIsoId = ""
-				} else {
-					srcIsoId = derefAny(srcV.ElfImage.ID, "")
-				}
-				if v.IsoId == srcIsoId {
-					continue
-				}
-				// update cd-rom
-				p := vm.NewUpdateVMDiskParams()
-				var elfImageId *string
-				if v.IsoId != "" {
-					elfImageId = &v.IsoId
-				}
-				p.RequestBody = &models.VMUpdateDiskParams{
-					Where: &models.VMWhereInput{
-						ID: &id,
-					},
-					Data: &models.VMUpdateDiskParamsData{
-						VMDiskID:   &v.Id,
-						ElfImageID: elfImageId,
-					},
-				}
-				vms, err := ct.Api.VM.UpdateVMDisk(p)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				err = waitVmTasksFinish(ct, vms.Payload)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-			}
-		}
-		for k := range curMap {
-			removeIds = append(removeIds, k)
-		}
-		if len(removeIds) > 0 {
-			p := vm.NewRemoveVMCdRomParams()
-			p.RequestBody = &models.VMRemoveCdRomParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMRemoveCdRomParamsData{
-					CdRomIds: removeIds,
-				},
-			}
-			vms, err := ct.Api.VM.RemoveVMCdRom(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-		if len(adds) > 0 {
-			p := vm.NewAddVMCdRomParams()
-			p.RequestBody = &models.VMAddCdRomParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMAddCdRomParamsData{
-					VMCdRoms: adds,
-				},
-			}
-			vms, err := ct.Api.VM.AddVMCdRom(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-	}
-
-	if d.HasChange("disk") {
-		vmDisks, _, diags := readVmDisks(ctx, d, ct)
-		if diags != nil {
-			return diags
-		}
-		curMap := make(map[string]*int, 0)
-		for idx, v := range vmDisks {
-			_idx := idx
-			curMap[*v.ID] = &_idx
-		}
-
-		var disks []*VmDisk
-		bytes, err := json.Marshal(d.Get("disk"))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &disks)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-
-		mountDisks := make([]*models.MountDisksParams, 0)
-		mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
-		var removeIds []string
-		for _, v := range disks {
-			if v.Id == "" {
-				// new disk
-				// TODO: reuse with create context
-				boot := int32(v.Boot)
-				if v.VmVolumeId != "" {
-					mountDisks = append(mountDisks, &models.MountDisksParams{
-						Boot:       &boot,
-						Bus:        &v.Bus,
-						VMVolumeID: &v.VmVolumeId,
-						Index:      &boot,
-					})
-				} else if v.VmVolume != nil && len(v.VmVolume) == 1 {
-					volume := v.VmVolume
-					mountNewCreateDisks = append(mountNewCreateDisks, &models.MountNewCreateDisksParams{
-						Boot: &boot,
-						Bus:  &v.Bus,
-						VMVolume: &models.MountNewCreateDisksParamsVMVolume{
-							ElfStoragePolicy: &volume[0].StoragePolicy,
-							Name:             &volume[0].Name,
-							Size:             &volume[0].Size,
-							Path:             &volume[0].Path,
-						},
-						Index: &boot,
-					})
-				}
-			} else if curMap[v.Id] != nil {
-				// TODO: support update vm disk
-				delete(curMap, v.Id)
-			}
-		}
-		for k := range curMap {
-			removeIds = append(removeIds, k)
-		}
-		if len(removeIds) > 0 {
-			p := vm.NewRemoveVMDiskParams()
-			p.RequestBody = &models.VMRemoveDiskParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMRemoveDiskParamsData{
-					DiskIds: removeIds,
-				},
-			}
-			vms, err := ct.Api.VM.RemoveVMDisk(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-		if len(mountDisks)+len(mountNewCreateDisks) > 0 {
-			p := vm.NewAddVMDiskParams()
-			p.RequestBody = &models.VMAddDiskParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMAddDiskParamsData{
-					VMDisks: &models.VMAddDiskParamsDataVMDisks{
-						MountDisks:          mountDisks,
-						MountNewCreateDisks: mountNewCreateDisks,
-					},
-				},
-			}
-			vms, err := ct.Api.VM.AddVMDisk(p)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-	}
-
+	ct.WaitTaskForResource(d.Id())
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -1653,6 +1787,9 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		},
 	}
 	vmDisks, err := ct.Api.VMDisk.GetVMDisks(gp)
+	if err != nil {
+		return nil, nil, diag.FromErr(err)
+	}
 	gp2 := vm_volume.NewGetVMVolumesParams()
 	gp2.RequestBody = &models.GetVMVolumesRequestBody{
 		Where: &models.VMVolumeWhereInput{
@@ -1665,6 +1802,9 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		},
 	}
 	vmVolumes, err := ct.Api.VMVolume.GetVMVolumes(gp2)
+	if err != nil {
+		return nil, nil, diag.FromErr(err)
+	}
 	vmVolumeMap := make(map[string]*models.VMVolume, 0)
 	for _, v := range vmVolumes.Payload {
 		vmVolumeMap[*v.ID] = v
@@ -1675,9 +1815,6 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		vmVolumesSlice[idx] = vmVolume
 	}
 
-	if err != nil {
-		return nil, nil, diag.FromErr(err)
-	}
 	return vmDisks.Payload, vmVolumesSlice, nil
 }
 

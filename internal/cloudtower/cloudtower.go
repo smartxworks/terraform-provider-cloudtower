@@ -2,10 +2,13 @@ package cloudtower
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	"github.com/hasura/go-graphql-client"
 	apiclient "github.com/smartxworks/cloudtower-go-sdk/v2/client"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/organization"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/task"
@@ -30,13 +33,14 @@ func FloatPtr(f float64) *float64 {
 }
 
 type Client struct {
-	server   string
-	username string
-	passwd   string
-	source   models.UserSource
-	token    string
-	OrgId    string
-	Api      *apiclient.Cloudtower
+	server     string
+	username   string
+	passwd     string
+	source     models.UserSource
+	token      string
+	OrgId      string
+	Api        *apiclient.Cloudtower
+	GraphqlApi *graphql.Client
 }
 
 func NewClient(server string, username string, passwd string, source models.UserSource) (*Client, error) {
@@ -62,6 +66,7 @@ func NewClient(server string, username string, passwd string, source models.User
 	if err != nil {
 		return nil, err
 	}
+	graphqlClient := graphql.NewClient(fmt.Sprintf("http://%s/api", server), nil)
 
 	return &Client{
 		server:   server,
@@ -71,6 +76,9 @@ func NewClient(server string, username string, passwd string, source models.User
 		token:    *loginResp.Payload.Data.Token,
 		OrgId:    *orgs.Payload[0].ID,
 		Api:      api,
+		GraphqlApi: graphqlClient.WithRequestModifier(func(r *http.Request) {
+			r.Header.Set("Authorization", *loginResp.Payload.Data.Token)
+		}),
 	}, nil
 }
 
@@ -83,6 +91,38 @@ func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
 		Where: &models.TaskWhereInput{
 			IDIn: taskIds,
 		},
+	}
+	for {
+		tasksResp, err := c.Api.Task.GetTasks(tasksParams)
+		if err != nil {
+			return nil, err
+		}
+		allFinished := true
+		for _, v := range tasksResp.Payload {
+			if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
+				allFinished = false
+			}
+			if *v.Status == models.TaskStatusFAILED {
+				return nil, errors.New(*v.ErrorMessage)
+			}
+		}
+		if !allFinished {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		return tasksResp, nil
+	}
+}
+
+func (c *Client) WaitTaskForResource(id string) (*task.GetTasksOK, error) {
+	tasksParams := task.NewGetTasksParams()
+	var first int32 = 1
+	tasksParams.RequestBody = &models.GetTasksRequestBody{
+		Where: &models.TaskWhereInput{
+			ResourceID: &id,
+		},
+		OrderBy: models.TaskOrderByInputLocalCreatedAtDESC.Pointer(),
+		First:   &first,
 	}
 	for {
 		tasksResp, err := c.Api.Task.GetTasks(tasksParams)
