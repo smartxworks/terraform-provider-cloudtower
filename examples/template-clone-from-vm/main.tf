@@ -14,27 +14,25 @@ provider "cloudtower" {
 }
 
 
-resource "cloudtower_cluster" "sample_cluster" {
-  ip       = var.cluster_config["ip"]
-  username = var.cluster_config["user"]
-  password = var.cluster_config["password"]
+data "cloudtower_cluster" "sample_cluster" {
+  name = var.cluster_config["name"]
 }
 
 data "cloudtower_vlan" "vm_vlan" {
   name       = "default"
   type       = "VM"
-  cluster_id = cloudtower_cluster.sample_cluster.id
+  cluster_id = data.cloudtower_cluster.sample_cluster.clusters[0].id
 }
 
 data "cloudtower_host" "target_host" {
   management_ip_contains = "31.16"
-  cluster_id             = cloudtower_cluster.sample_cluster.id
+  cluster_id             = data.cloudtower_cluster.sample_cluster.clusters[0].id
 }
 
 resource "cloudtower_vm" "tf_test" {
   name                = "tf-test-to-be-cloned-by-vm"
   description         = "managed by terraform"
-  cluster_id          = cloudtower_cluster.sample_cluster.id
+  cluster_id          = data.cloudtower_cluster.sample_cluster.clusters[0].id
   host_id             = data.cloudtower_host.target_host.hosts[0].id
   vcpu                = 4
   memory              = 4 * 1024 * 1024 * 1024
@@ -64,10 +62,8 @@ resource "cloudtower_vm" "tf_test" {
 }
 
 resource "cloudtower_vm_template" "tf_test_template_clone_from_vm" {
-  name  = "tf-test-template-by-cloned-from-vm"
+  name  = "tf-test-template-by-cloned-from-vm-1"
   cloud_init_supported = false
   description = "first tf template"
-  create_effect {
-    clone_from_vm = cloudtower_vm.tf_test.id
-  }
+  src_vm_id = cloudtower_vm.tf_test.id
 }
