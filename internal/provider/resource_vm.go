@@ -261,147 +261,147 @@ func resourceVm() *schema.Resource {
 							ForceNew:    true,
 							Description: "Id of source VM template to be cloned",
 						},
+						"is_full_copy": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "If the vm is full copy from template or not",
+						},
 						"rebuild_from_snapshot": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
 							Description: "Id of snapshot for created vm to be rebuilt from",
 						},
-					},
-				},
-			},
-			"is_full_copy": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Description: "If the vm is full copy from template or not",
-			},
-			"cloud_init": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				MaxItems:    1,
-				Description: "Set up cloud-init config when create vm from template",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"default_user_password": {
-							Type:        schema.TypeString,
+						"cloud_init": {
+							Type:        schema.TypeList,
 							Optional:    true,
-							ForceNew:    true,
-							Description: "Password of default user",
-						},
-						"nameservers": {
-							Type: schema.TypeList,
-							Elem: &schema.Schema{
-								Type: schema.TypeString,
-							},
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Name server address list. At most 3 name servers are allowed.",
-						},
-						"public_keys": {
-							Type: schema.TypeList,
-							Elem: &schema.Schema{
-								Type: schema.TypeString,
-							},
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Add a list of public keys for the cloud-init default user.At most 10 public keys can be added to the list.",
-						},
-						"networks": {
-							Type:     schema.TypeList,
-							MaxItems: 1,
+							MaxItems:    1,
+							Description: "Set up cloud-init config when create vm from template",
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"ip_address": {
+									"default_user_password": {
 										Type:        schema.TypeString,
 										Optional:    true,
 										ForceNew:    true,
-										Description: "IPv4 address. This field is only used when type is not set to ipv4_dhcp.",
+										Description: "Password of default user",
 									},
-									"netmask": {
-										Type:        schema.TypeString,
+									"nameservers": {
+										Type: schema.TypeList,
+										Elem: &schema.Schema{
+											Type: schema.TypeString,
+										},
 										Optional:    true,
 										ForceNew:    true,
-										Description: "Netmask. This field is only used when type is not set to ipv4_dhcp.",
+										Description: "Name server address list. At most 3 name servers are allowed.",
 									},
-									"nic_index": {
-										Type:        schema.TypeInt,
-										Required:    true,
-										ForceNew:    true,
-										Description: "Index of VM NICs. The index starts at 0, which refers to the first NIC.At most 16 NICs are supported, so the index range is [0, 15].",
-									},
-									"routes": {
-										Type:        schema.TypeList,
+									"public_keys": {
+										Type: schema.TypeList,
+										Elem: &schema.Schema{
+											Type: schema.TypeString,
+										},
 										Optional:    true,
 										ForceNew:    true,
-										MaxItems:    1,
-										Description: "Static route list",
+										Description: "Add a list of public keys for the cloud-init default user.At most 10 public keys can be added to the list.",
+									},
+									"networks": {
+										Type:     schema.TypeList,
+										MaxItems: 1,
 										Elem: &schema.Resource{
 											Schema: map[string]*schema.Schema{
-												"gateway": {
+												"ip_address": {
 													Type:        schema.TypeString,
 													Optional:    true,
 													ForceNew:    true,
-													Description: "Gateway to access the static route address.",
+													Description: "IPv4 address. This field is only used when type is not set to ipv4_dhcp.",
 												},
 												"netmask": {
 													Type:        schema.TypeString,
 													Optional:    true,
 													ForceNew:    true,
-													Description: "Netmask of the network",
+													Description: "Netmask. This field is only used when type is not set to ipv4_dhcp.",
 												},
-												"network": {
-													Type:        schema.TypeString,
+												"nic_index": {
+													Type:        schema.TypeInt,
+													Required:    true,
+													ForceNew:    true,
+													Description: "Index of VM NICs. The index starts at 0, which refers to the first NIC.At most 16 NICs are supported, so the index range is [0, 15].",
+												},
+												"routes": {
+													Type:        schema.TypeList,
 													Optional:    true,
 													ForceNew:    true,
-													Description: "Static route network address. If set to 0.0.0.0, then first use the user settings to configure the default route.",
+													MaxItems:    1,
+													Description: "Static route list",
+													Elem: &schema.Resource{
+														Schema: map[string]*schema.Schema{
+															"gateway": {
+																Type:        schema.TypeString,
+																Optional:    true,
+																ForceNew:    true,
+																Description: "Gateway to access the static route address.",
+															},
+															"netmask": {
+																Type:        schema.TypeString,
+																Optional:    true,
+																ForceNew:    true,
+																Description: "Netmask of the network",
+															},
+															"network": {
+																Type:        schema.TypeString,
+																Optional:    true,
+																ForceNew:    true,
+																Description: "Static route network address. If set to 0.0.0.0, then first use the user settings to configure the default route.",
+															},
+														},
+													},
+												},
+												"type": {
+													Type:        schema.TypeString,
+													Required:    true,
+													ForceNew:    true,
+													Description: "Network type. Allowed enum values are ipv4, ipv4_dhcp.",
+													ValidateDiagFunc: func(v interface{}, _ cty.Path) diag.Diagnostics {
+														var diags diag.Diagnostics
+														val, ok := v.(string)
+														if !ok {
+															return append(diags, diag.Diagnostic{
+																Severity: diag.Error,
+																Summary:  "Wrong type",
+																Detail:   "type should be a string",
+															})
+														} else if val != string(models.CloudInitNetworkTypeEnumIPV4) && val != string(models.CloudInitNetworkTypeEnumIPV4DHCP) {
+															return append(diags, diag.Diagnostic{
+																Severity: diag.Error,
+																Summary:  "Invalid type",
+																Detail: fmt.Sprintf("type should be one of %v, but get %s",
+																	[]string{string(models.CloudInitNetworkTypeEnumIPV4), string(models.CloudInitNetworkTypeEnumIPV4DHCP)},
+																	val,
+																),
+															})
+														}
+														return diags
+													},
 												},
 											},
 										},
-									},
-									"type": {
-										Type:        schema.TypeString,
-										Required:    true,
+										Optional:    true,
 										ForceNew:    true,
-										Description: "Network type. Allowed enum values are ipv4, ipv4_dhcp.",
-										ValidateDiagFunc: func(v interface{}, _ cty.Path) diag.Diagnostics {
-											var diags diag.Diagnostics
-											val, ok := v.(string)
-											if !ok {
-												return append(diags, diag.Diagnostic{
-													Severity: diag.Error,
-													Summary:  "Wrong type",
-													Detail:   "type should be a string",
-												})
-											} else if val != string(models.CloudInitNetworkTypeEnumIPV4) && val != string(models.CloudInitNetworkTypeEnumIPV4DHCP) {
-												return append(diags, diag.Diagnostic{
-													Severity: diag.Error,
-													Summary:  "Invalid type",
-													Detail: fmt.Sprintf("type should be one of %v, but get %s",
-														[]string{string(models.CloudInitNetworkTypeEnumIPV4), string(models.CloudInitNetworkTypeEnumIPV4DHCP)},
-														val,
-													),
-												})
-											}
-											return diags
-										},
+										Description: "Network configuration list.",
+									},
+									"hostname": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										ForceNew:    true,
+										Description: "hostname",
+									},
+									"user_data": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										ForceNew:    true,
+										Description: "User-provided cloud-init user-data field. Base64 encoding is not supported. Size limit: 32KiB.",
 									},
 								},
 							},
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Network configuration list.",
-						},
-						"hostname": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "hostname",
-						},
-						"user_data": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "User-provided cloud-init user-data field. Base64 encoding is not supported. Size limit: 32KiB.",
 						},
 					},
 				},
@@ -629,7 +629,9 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	count := 0
 	for k := range effects {
 		if effects[k] != "" {
-			count = count + 1
+			if k == "rebuild_from_snapshot" || k == "clone_from_vm" || k == "lone_from_template" {
+				count = count + 1
+			}
 		}
 	}
 	if count >= 2 {
@@ -702,7 +704,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		vms = response.Payload
 	} else if cloneFromTemplate != "" {
-		isFullCopyRes, ok := d.GetOkExists("is_full_copy")
+		isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
 		if !ok {
 			return diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
 		}
@@ -1521,12 +1523,12 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 
 func expandCloudInitConfig(d *schema.ResourceData) (*models.VMCreateVMFromTemplateParamsCloudInit, error) {
 	cloudInit := &models.VMCreateVMFromTemplateParamsCloudInit{}
-	defaultPassword, ok := d.GetOk("cloud_init.0.default_user_password")
+	defaultPassword, ok := d.GetOk("create_effect.0.cloud_init.0.default_user_password")
 	if ok {
 		defaultPassword := defaultPassword.(string)
 		cloudInit.DefaultUserPassword = &defaultPassword
 	}
-	nameservers, ok := d.GetOk("cloud_init.0.nameservers")
+	nameservers, ok := d.GetOk("create_effect.0.cloud_init.0.nameservers")
 	if ok {
 		bytes, err := json.Marshal(nameservers)
 		if err != nil {
@@ -1539,7 +1541,7 @@ func expandCloudInitConfig(d *schema.ResourceData) (*models.VMCreateVMFromTempla
 		}
 		cloudInit.Nameservers = nameservers
 	}
-	publicKeys, ok := d.GetOk("cloud_init.0.public_keys")
+	publicKeys, ok := d.GetOk("create_effect.0.cloud_init.0.public_keys")
 	if ok {
 		bytes, err := json.Marshal(publicKeys)
 		if err != nil {
@@ -1552,17 +1554,17 @@ func expandCloudInitConfig(d *schema.ResourceData) (*models.VMCreateVMFromTempla
 		}
 		cloudInit.PublicKeys = publicKeys
 	}
-	hostName, ok := d.GetOk("cloud_init.0.hostname")
+	hostName, ok := d.GetOk("create_effect.0.cloud_init.0.hostname")
 	if ok {
 		hostName := hostName.(string)
 		cloudInit.Hostname = &hostName
 	}
-	userData, ok := d.GetOk("cloud_init.0.user_data")
+	userData, ok := d.GetOk("create_effect.0.cloud_init.0.user_data")
 	if ok {
 		userData := userData.(string)
 		cloudInit.UserData = &userData
 	}
-	networks, ok := d.GetOk("cloud_init.0.networks")
+	networks, ok := d.GetOk("create_effect.0.cloud_init.0.networks")
 	if ok {
 		bytes, err := json.Marshal(networks)
 		if err != nil {
