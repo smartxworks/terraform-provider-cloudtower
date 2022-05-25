@@ -70,26 +70,23 @@ resource "cloudtower_vm" "tf_test_cloned_vm_cloud_init" {
   }
 }
 
-
-
-//FIXME: not work
-# resource "cloudtower_vm" "tf_test_cloned_vm_modify_disks" {
-#   name = "tf-test-cloned-vm-from-template-modify-disks"
-#   is_full_copy = false
-#   cd_rom {
-#     boot   = 2
-#     iso_id = ""
-#   }
-#   disk {
-#     boot = 1
-#     bus  = "VIRTIO"
-#     vm_volume {
-#       storage_policy = "REPLICA_2_THIN_PROVISION"
-#       name           = "d1"
-#       size           = 20 * 1024 * 1024 * 1024
-#     }
-#   }
-#   create_effect {
-#     clone_from_template = "cl3kix921w74l0921sci4fxth"
-#   }
-# }
+resource "cloudtower_vm" "tf_test_cloned_vm_modify_disks" {
+  name = "tf-test-cloned-vm-from-template-modify-disks"
+  is_full_copy = false
+  cd_rom {
+    boot   = 1
+    iso_id = ""
+  }
+  disk {
+    boot = 2
+    bus  = "VIRTIO"
+    vm_volume {
+      storage_policy = "REPLICA_2_THIN_PROVISION"
+      name           = "d1"
+      size           = 20 * 1024 * 1024 * 1024
+    }
+  }
+  create_effect {
+    clone_from_template = data.cloudtower_vm_template.tf_test_template.vm_templates[0].id
+  }
+}

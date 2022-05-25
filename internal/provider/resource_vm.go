@@ -14,6 +14,7 @@ import (
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_disk"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_nic"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_volume"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 )
@@ -711,6 +712,22 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		if err != nil {
 			return diag.FromErr(err)
 		}
+		var diskParams *models.VMDiskParams = nil
+		removeIndex := make([]int32, 0)
+		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
+			diskParams = &models.VMDiskParams{
+				MountCdRoms:         cdRoms,
+				MountDisks:          mountDisks,
+				MountNewCreateDisks: mountNewCreateDisks,
+			}
+			vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
+			if diags != nil {
+				return diags
+			}
+			for idx, _ := range vmDisks {
+				removeIndex = append(removeIndex, int32(idx))
+			}
+		}
 		cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{
 			{
 				IsFullCopy:  &isFullCopy,
@@ -729,6 +746,12 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 				TemplateID:  &cloneFromTemplate,
 				VMNics:      vmNics,
 				CloudInit:   cloudInit,
+				DiskOperate: &models.VMCreateVMFromTemplateParamsDiskOperate{
+					NewDisks: diskParams,
+					RemoveDisks: &models.VMCreateVMFromTemplateParamsDiskOperateRemoveDisks{
+						DiskIndex: removeIndex,
+					},
+				},
 			},
 		}
 		response, err := ct.Api.VM.CreateVMFromTemplate(cvft)
@@ -1654,6 +1677,21 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		return nil, nil, diag.FromErr(err)
 	}
 	return vmDisks.Payload, vmVolumesSlice, nil
+}
+
+func readVmDisksFromTemplate(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.NestedFrozenDisks, diag.Diagnostics) {
+	cloneFromTemplate := d.Get("create_effect.0.clone_from_template").(string)
+	gp := vm_template.NewGetVMTemplatesParams()
+	gp.RequestBody = &models.GetVMTemplatesRequestBody{
+		Where: &models.VMTemplateWhereInput{
+			ID: &cloneFromTemplate,
+		},
+	}
+	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return vmTemplates.Payload[0].VMDisks, nil
 }
 
 func readCdRoms(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMDisk, diag.Diagnostics) {
