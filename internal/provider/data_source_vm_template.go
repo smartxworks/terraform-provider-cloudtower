@@ -17,7 +17,7 @@ func dataSourceVmTemplate() *schema.Resource {
 	return &schema.Resource{
 		Description: "CloudTower vm template data source.",
 
-		ReadContext: dataSourceVmSnapshotRead,
+		ReadContext: dataSourceVmTemplateRead,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -79,7 +79,9 @@ func dataSourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta 
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
 	if cluster_id := d.Get("cluster_id").(string); cluster_id != "" {
-		gp.RequestBody.Where.Cluster.ID = &cluster_id
+		gp.RequestBody.Where.Cluster = &models.ClusterWhereInput{
+			ID: &cluster_id,
+		}
 	}
 	vm_templates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
 	if err != nil {
