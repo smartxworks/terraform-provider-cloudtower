@@ -40,5 +40,5 @@ vendor
 
 !examples/**/*.tf
 examples/*.tf
-examples/variable.tf
-examples/**/variable.tf
+!examples/variable.tf
+*.tfvars

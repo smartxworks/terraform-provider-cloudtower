@@ -823,12 +823,11 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		vms = response.Payload
 	}
 
-	d.SetId(*vms[0].Data.ID)
 	err = waitVmTasksFinish(ct, vms)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
+	d.SetId(*vms[0].Data.ID)
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -837,7 +836,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	ct := meta.(*cloudtower.Client)
 
 	v, diags := readVm(ctx, d, ct)
-	if diags != nil {
+	if diags != nil || v == nil {
 		return diags
 	}
 
