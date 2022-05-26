@@ -23,26 +23,26 @@ data "cloudtower_cluster" "sample_cluster" {
 
 data "cloudtower_vm_template" "tf_test_template" {
   cluster_id = data.cloudtower_cluster.sample_cluster.clusters[0].id
-  name = var.vm_template_with_cloud_init
+  name       = var.vm_template_with_cloud_init
 }
 
 data "cloudtower_vlan" "vm_vlan" {
   name       = "default"
   type       = "VM"
-  cluster_id =  data.cloudtower_cluster.sample_cluster.clusters[0].id
+  cluster_id = data.cloudtower_cluster.sample_cluster.clusters[0].id
 }
 
 
 resource "cloudtower_vm" "tf_test_cloned_vm" {
-  name       = "tf-test-cloned-vm-from-template"
+  name = "tf-test-cloned-vm-from-template"
   create_effect {
-    is_full_copy = false
+    is_full_copy        = false
     clone_from_template = data.cloudtower_vm_template.tf_test_template.vm_templates[0].id
   }
 }
 
 resource "cloudtower_vm" "tf_test_cloned_vm_modify_nics" {
-  name       = "tf-test-cloned-vm-from-template-modify-nics"
+  name = "tf-test-cloned-vm-from-template-modify-nics"
   nic {
     vlan_id = data.cloudtower_vlan.vm_vlan.vlans[0].id
     enabled = true
@@ -57,16 +57,16 @@ resource "cloudtower_vm" "tf_test_cloned_vm_modify_nics" {
 resource "cloudtower_vm" "tf_test_cloned_vm_cloud_init" {
   name = "tf-test-cloned-vm-from-template-modify-cloud-init"
   create_effect {
-    is_full_copy = false
+    is_full_copy        = false
     clone_from_template = data.cloudtower_vm_template.tf_test_template.vm_templates[0].id
-    cloud_init  {
-      hostname = "tf-test-vm-hostname"
+    cloud_init {
+      hostname              = "tf-test-vm-hostname"
       default_user_password = 111111
       networks {
-        type = "IPV4"
-        nic_index = 0
+        type       = "IPV4"
+        nic_index  = 0
         ip_address = "192.168.11.1"
-        netmask = "0.0.0.0"
+        netmask    = "0.0.0.0"
       }
     }
   }
@@ -88,7 +88,7 @@ resource "cloudtower_vm" "tf_test_cloned_vm_modify_disks" {
     }
   }
   create_effect {
-    is_full_copy = false
+    is_full_copy        = false
     clone_from_template = data.cloudtower_vm_template.tf_test_template.vm_templates[0].id
   }
 }

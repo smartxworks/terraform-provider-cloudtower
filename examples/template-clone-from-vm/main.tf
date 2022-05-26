@@ -62,8 +62,8 @@ resource "cloudtower_vm" "tf_test" {
 }
 
 resource "cloudtower_vm_template" "tf_test_template_clone_from_vm" {
-  name  = "tf-test-template-by-cloned-from-vm-1"
+  name                 = "tf-test-template-by-cloned-from-vm-1"
   cloud_init_supported = false
-  description = "first tf template"
-  src_vm_id = cloudtower_vm.tf_test.id
+  description          = "first tf template"
+  src_vm_id            = cloudtower_vm.tf_test.id
 }

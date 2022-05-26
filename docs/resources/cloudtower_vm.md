@@ -62,8 +62,49 @@ Read-Only:
 
 Optional:
 
+- **clone_from_template** (String) Id of source VM template to be cloned
 - **clone_from_vm** (String) Id of source vm from created vm to be cloned from
+- **cloud_init** (Block List, Max: 1) Set up cloud-init config when create vm from template (see [below for nested schema](#nestedblock--create_effect--cloud_init))
+- **is_full_copy** (Boolean) If the vm is full copy from template or not
 - **rebuild_from_snapshot** (String) Id of snapshot for created vm to be rebuilt from
+
+<a id="nestedblock--create_effect--cloud_init"></a>
+### Nested Schema for `create_effect.cloud_init`
+
+Optional:
+
+- **default_user_password** (String) Password of default user
+- **hostname** (String) hostname
+- **nameservers** (List of String) Name server address list. At most 3 name servers are allowed.
+- **networks** (Block List, Max: 1) Network configuration list. (see [below for nested schema](#nestedblock--create_effect--cloud_init--networks))
+- **public_keys** (List of String) Add a list of public keys for the cloud-init default user.At most 10 public keys can be added to the list.
+- **user_data** (String) User-provided cloud-init user-data field. Base64 encoding is not supported. Size limit: 32KiB.
+
+<a id="nestedblock--create_effect--cloud_init--networks"></a>
+### Nested Schema for `create_effect.cloud_init.networks`
+
+Required:
+
+- **nic_index** (Number) Index of VM NICs. The index starts at 0, which refers to the first NIC.At most 16 NICs are supported, so the index range is [0, 15].
+- **type** (String) Network type. Allowed enum values are ipv4, ipv4_dhcp.
+
+Optional:
+
+- **ip_address** (String) IPv4 address. This field is only used when type is not set to ipv4_dhcp.
+- **netmask** (String) Netmask. This field is only used when type is not set to ipv4_dhcp.
+- **routes** (Block List, Max: 1) Static route list (see [below for nested schema](#nestedblock--create_effect--cloud_init--networks--routes))
+
+<a id="nestedblock--create_effect--cloud_init--networks--routes"></a>
+### Nested Schema for `create_effect.cloud_init.networks.routes`
+
+Optional:
+
+- **gateway** (String) Gateway to access the static route address.
+- **netmask** (String) Netmask of the network
+- **network** (String) Static route network address. If set to 0.0.0.0, then first use the user settings to configure the default route.
+
+
+
 
 
 <a id="nestedblock--disk"></a>
