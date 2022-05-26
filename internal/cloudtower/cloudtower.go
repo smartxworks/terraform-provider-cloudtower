@@ -114,12 +114,13 @@ func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
 	}
 }
 
-func (c *Client) WaitTaskForResource(id string) (*task.GetTasksOK, error) {
+func (c *Client) WaitTaskForResource(id string, task_type string) (*task.GetTasksOK, error) {
 	tasksParams := task.NewGetTasksParams()
 	var first int32 = 1
 	tasksParams.RequestBody = &models.GetTasksRequestBody{
 		Where: &models.TaskWhereInput{
-			ResourceID: &id,
+			ResourceID:       &id,
+			ResourceMutation: &task_type,
 		},
 		OrderBy: models.TaskOrderByInputLocalCreatedAtDESC.Pointer(),
 		First:   &first,

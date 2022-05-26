@@ -495,7 +495,104 @@ type VmNic struct {
 	Idx    int    `json:"idx"`
 }
 
-type VmUpdateInput map[string]interface{}
+type VmUpdateInput struct {
+	Name        string        `json:"name,omitempty"`
+	Memory      int64         `json:"memory,omitempty"`
+	Ha          bool          `json:"ha,omitempty"`
+	Description string        `json:"description,omitempty"`
+	VCpu        int32         `json:"vcpu,omitempty"`
+	Cpu         *CpuStruct    `json:"cpu,omitempty"`
+	VmNics      *VmNicStruct  `json:"vm_nics,omitempty"`
+	VmDisks     *VmDiskStruct `json:"vm_disks,omitempty"`
+}
+
+type CpuStruct struct {
+	Sockets int32 `json:"sockets,omitempty"`
+	Cores   int32 `json:"cores,omitempty"`
+}
+type VmNicStruct struct {
+	Create []VmNicCreate `json:"create,omitempty"`
+	Delete []VmNicDelete `json:"delete,omitempty"`
+}
+type VmNicCreate struct {
+	Enabled    bool              `json:"enabled,omitempty"`
+	Gateway    string            `json:"gateway,omitempty"`
+	IPAddress  string            `json:"ip_address,omitempty"`
+	MacAddress string            `json:"mac_address,omitempty"`
+	SubnetMask string            `json:"subnet_mask,omitempty"`
+	LocalId    string            `json:"local_id"`
+	Model      models.VMNicModel `json:"model,omitempty"`
+	Nic        *ConnectStruct    `json:"nic,omitempty"`
+	Vlan       *ConnectStruct    `json:"vlan,omitempty"`
+}
+
+type VmNicDelete struct {
+	Id string `json:"id"`
+}
+type VmDiskStruct struct {
+	Create []VmDiskCreate `json:"create,omitempty"`
+	Delete []VmDiskDelete `json:"delete,omitempty"`
+	Update []VmDiskUpdate `json:"update,omitempty"`
+}
+
+type VmDiskCreate struct {
+	Boot     int                          `json:"boot,omitempty"`
+	Bus      models.Bus                   `json:"bus,omitempty"`
+	Type     models.VMDiskType            `json:"type,omitempty"`
+	ElfImage *ConnectStruct               `json:"elf_image,omitempty"`
+	VmVolume *VmVolumeCreateConnectStruct `json:"vm_volume,omitempty"`
+}
+
+type VmDiskDelete struct {
+	Id string `json:"id"`
+}
+
+type VmDiskUpdate struct {
+	Where VmDiskWhereInput `json:"where"`
+	Data  VmDiskUpdateData `json:"data"`
+}
+
+type VmDiskWhereInput struct {
+	Id string `json:"id"`
+}
+
+type VmDiskUpdateData struct {
+	Boot     int                          `json:"boot,omitempty"`
+	Bus      models.Bus                   `json:"bus,omitempty"`
+	Key      int32                        `json:"key,omitempty"`
+	Type     models.VMDiskType            `json:"type,omitempty"`
+	Disabled bool                         `json:"disabled,omitempty"`
+	ElfImage *ConnectStruct               `json:"elf_image,omitempty"`
+	VmVolume *VmVolumeCreateConnectStruct `json:"vm_volume,omitempty"`
+}
+
+type VmVolumeCreateConnectStruct struct {
+	Connect    *ConnectConnect      `json:"connect,omitempty"`
+	Disconnect *bool                `json:"disconnect,omitempty"`
+	Create     *VmVolumeCreateInput `json:"create,omitempty"`
+}
+
+type VmVolumeCreateInput struct {
+	Name             string                              `json:"name"`
+	Path             string                              `json:"path"`
+	Size             int64                               `json:"size"`
+	ElfStoragePolicy models.VMVolumeElfStoragePolicyType `json:"elf_storage_policy"`
+	LocalCreatedAt   string                              `json:"local_created_at"`
+	LocalId          string                              `json:"local_id"`
+	Mounting         bool                                `json:"mounting"`
+	Sharing          bool                                `json:"sharing"`
+	Cluster          *ConnectStruct                      `json:"cluster,omitempty"`
+}
+
+type ConnectStruct struct {
+	Connect    *ConnectConnect `json:"connect,omitempty"`
+	Disconnect *bool           `json:"disconnect,omitempty"`
+}
+
+type ConnectConnect struct {
+	Id string `json:"id"`
+}
+
 type UpdateVmEffect map[string]interface{}
 type VmWhereUniqueInput map[string]interface{}
 
@@ -744,7 +841,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 			if diags != nil {
 				return diags
 			}
-			for idx, _ := range vmDisks {
+			for idx := range vmDisks {
 				removeIndex = append(removeIndex, int32(idx))
 			}
 		}
@@ -976,95 +1073,96 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	ct := meta.(*cloudtower.Client)
 	id := d.Id()
 	originalVm, _ := readVm(ctx, d, ct)
-	var updateParams VmUpdateInput = make(map[string]interface{})
+	var updateParams VmUpdateInput = VmUpdateInput{}
 	// handle update data first, if there is error in data, will not execute other mutation
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
 		basic, err := expandVmBasicConfig(d)
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		updateParams["name"] = basic.Name
+		updateParams.Name = basic.Name
 		if basic.Memory != nil {
-			updateParams["memory"] = *basic.Memory
+			updateParams.Memory = *basic.Memory
 		}
+
 		if basic.Ha != nil {
-			updateParams["ha"] = *basic.Ha
+			updateParams.Ha = *basic.Ha
 		}
 		if basic.Description != nil {
-			updateParams["description"] = *basic.Description
+			updateParams.Description = *basic.Description
 		}
 		if basic.CpuCores == nil || basic.CpuSockets == nil || basic.Vcpu == nil {
 			if basic.CpuCores == nil {
 				if basic.CpuSockets == nil {
 					// do nothing if nothing of cpu config has changed
 					if basic.Vcpu != nil {
-						updateParams["vcpu"] = *basic.Vcpu
+						updateParams.VCpu = *basic.Vcpu
 						if *basic.Vcpu%*originalVm.CPU.Sockets == 0 {
 							newCore := *basic.Vcpu / *originalVm.CPU.Sockets
-							updateParams["cpu"] = map[string]int32{
-								"cores":   newCore,
-								"sockets": *originalVm.CPU.Sockets,
+							updateParams.Cpu = &CpuStruct{
+								Cores:   newCore,
+								Sockets: *originalVm.CPU.Sockets,
 							}
 						} else if *basic.Vcpu%*originalVm.CPU.Cores == 0 {
 							newSockets := *basic.Vcpu / *originalVm.CPU.Cores
-							updateParams["cpu"] = map[string]int32{
-								"cores":   *originalVm.CPU.Cores,
-								"sockets": newSockets,
+							updateParams.Cpu = &CpuStruct{
+								Cores:   *originalVm.CPU.Cores,
+								Sockets: newSockets,
 							}
 						} else {
-							updateParams["cpu"] = map[string]int32{
-								"cores":   *basic.Vcpu,
-								"sockets": 1,
+							updateParams.Cpu = &CpuStruct{
+								Cores:   *basic.Vcpu,
+								Sockets: 1,
 							}
 						}
 					}
 				}
 			} else if basic.CpuSockets == nil {
 				if basic.Vcpu == nil {
-					updateParams["vcpu"] = (*originalVm.CPU.Sockets) * (*basic.CpuCores)
-					updateParams["cpu"] = map[string]int32{
-						"cores":   *basic.CpuCores,
-						"sockets": *originalVm.CPU.Sockets,
+					updateParams.VCpu = (*originalVm.CPU.Sockets) * (*basic.CpuCores)
+					updateParams.Cpu = &CpuStruct{
+						Cores:   *basic.CpuCores,
+						Sockets: *originalVm.CPU.Sockets,
 					}
 				} else {
-					updateParams["vcpu"] = *basic.Vcpu
+					updateParams.VCpu = *basic.Vcpu
 					if *basic.Vcpu%*basic.CpuCores == 0 {
 						newSocket := *basic.Vcpu / *basic.CpuCores
-						updateParams["cpu"] = map[string]int32{
-							"cores":   *basic.CpuCores,
-							"sockets": newSocket,
+						updateParams.Cpu = &CpuStruct{
+							Cores:   *basic.CpuCores,
+							Sockets: newSocket,
 						}
 					} else {
 						return diag.Errorf("vcpu must be divisible by number of cpu cores")
 					}
 				}
 			} else {
-				updateParams["vcpu"] = (*basic.CpuSockets) * (*basic.CpuCores)
-				updateParams["cpu"] = map[string]int32{
-					"cores":   *basic.CpuCores,
-					"sockets": *basic.CpuSockets,
+				updateParams.VCpu = (*basic.CpuSockets) * (*basic.CpuCores)
+				updateParams.Cpu = &CpuStruct{
+					Cores:   *basic.CpuCores,
+					Sockets: *basic.CpuSockets,
 				}
 			}
 		} else {
-			updateParams["vcpu"] = *basic.Vcpu
-			updateParams["cpu"] = map[string]int32{
-				"cores":   *basic.CpuCores,
-				"sockets": *basic.CpuSockets,
+			updateParams.VCpu = *basic.Vcpu
+			updateParams.Cpu = &CpuStruct{
+				Cores:   *basic.CpuCores,
+				Sockets: *basic.CpuSockets,
 			}
 		}
 	}
 
 	if d.HasChange("nic") {
 		// delete all previous vm nic
-		nicsToDelete := make([]map[string]interface{}, 0)
-		nicsToCreate := make([]map[string]interface{}, 0)
+		nicsToDelete := make([]VmNicDelete, 0)
+		nicsToCreate := make([]VmNicCreate, 0)
 		vmNics, diags := readVmNics(ctx, d, ct)
 		if diags != nil {
 			return diags
 		}
 		for _, n := range vmNics {
-			nicsToDelete = append(nicsToDelete, map[string]interface{}{
-				"id": *n.ID,
+			nicsToDelete = append(nicsToDelete, VmNicDelete{
+				Id: *n.ID,
 			})
 		}
 		var nics []*VmNic
@@ -1086,36 +1184,36 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				vlanId = *n.ConnectVlanID
 			}
 			nicsToCreate = append(nicsToCreate,
-				map[string]interface{}{
-					"enabled":     *n.Enabled,
-					"gateway":     *n.Gateway,
-					"ip_address":  *n.IPAddress,
-					"local_id":    *n.LocalID,
-					"mac_address": *n.MacAddress,
-					"model":       *n.Model,
-					"nic": map[string]interface{}{
-						"connect": map[string]interface{}{
-							"id": nicId,
+				VmNicCreate{
+					Enabled:    *n.Enabled,
+					Gateway:    *n.Gateway,
+					IPAddress:  *n.IPAddress,
+					LocalId:    *n.LocalID,
+					MacAddress: *n.MacAddress,
+					Model:      *n.Model,
+					SubnetMask: *n.SubnetMask,
+					Nic: &ConnectStruct{
+						Connect: &ConnectConnect{
+							Id: nicId,
 						},
 					},
-					"subnet_mask": *n.SubnetMask,
-					"vlan": map[string]interface{}{
-						"connect": map[string]interface{}{
-							"id": vlanId,
+					Vlan: &ConnectStruct{
+						Connect: &ConnectConnect{
+							Id: vlanId,
 						},
 					},
 				})
 		}
-		updateParams["vm_nics"] = map[string]interface{}{
-			"create": nicsToCreate,
-			"delete": nicsToDelete,
+		updateParams.VmNics = &VmNicStruct{
+			Create: nicsToCreate,
+			Delete: nicsToDelete,
 		}
 	}
 
 	if d.HasChanges("cd_rom", "disk") {
-		diskToCreate := make([]map[string]interface{}, 0)
-		diskToUpdate := make([]map[string]interface{}, 0)
-		diskToDelete := make([]map[string]interface{}, 0)
+		diskToCreate := make([]VmDiskCreate, 0)
+		diskToUpdate := make([]VmDiskUpdate, 0)
+		diskToDelete := make([]VmDiskDelete, 0)
 		cdRoms, diags := readCdRoms(ctx, d, ct)
 		if diags != nil {
 			return diags
@@ -1147,37 +1245,39 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				// for existing cd_rom, update it
 				origin := curMap[cr.Id]
 				if origin != nil {
-					var data = make(map[string]interface{})
-					data["boot"] = cr.Boot
-					data["bus"] = *origin.Bus
-					data["key"] = *origin.Key
-					data["disabled"] = *origin.Disabled
-					data["type"] = models.VMDiskTypeCDROM
+					var data = VmDiskUpdateData{}
+					data.Boot = int(cr.Boot)
+					data.Bus = *origin.Bus
+					data.Key = *origin.Key
+					data.Disabled = *origin.Disabled
+					data.Type = models.VMDiskTypeCDROM
 					if origin.ElfImage != nil && cr.IsoId == "" {
-						data["elf_image"] = map[string]interface{}{
-							"disconnect": true,
+						flag := true
+						data.ElfImage = &ConnectStruct{
+							Disconnect: &flag,
 						}
 					} else if !(cr.IsoId == "" && origin.ElfImage == nil) &&
 						!(origin.ElfImage != nil && cr.IsoId == *origin.ElfImage.ID) {
-						data["elf_image"] = map[string]interface{}{
-							"connect": map[string]interface{}{
-								"id": cr.IsoId,
+						data.ElfImage = &ConnectStruct{
+							Connect: &ConnectConnect{
+								Id: cr.IsoId,
 							},
 						}
 					}
-					diskToUpdate = append(diskToUpdate, map[string]interface{}{
-						"where": map[string]interface{}{"id": cr.Id},
-						"data":  data,
+					diskToUpdate = append(diskToUpdate, VmDiskUpdate{
+						Where: VmDiskWhereInput{Id: cr.Id},
+						Data:  data,
 					})
 				} else {
-					var data = make(map[string]interface{})
-					data["boot"] = cr.Boot
-					data["bus"] = models.BusIDE
-					data["type"] = models.VMDiskTypeCDROM
+					var data = VmDiskCreate{
+						Boot: int(cr.Boot),
+						Bus:  models.BusIDE,
+						Type: models.VMDiskTypeCDROM,
+					}
 					if cr.IsoId != "" {
-						data["elf_image"] = map[string]interface{}{
-							"connect": map[string]interface{}{
-								"id": cr.IsoId,
+						data.ElfImage = &ConnectStruct{
+							Connect: &ConnectConnect{
+								Id: cr.IsoId,
 							},
 						}
 					}
@@ -1187,14 +1287,14 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		} else {
 			// keep original cd_rom
 			for _, v := range cdRoms {
-				diskToUpdate = append(diskToUpdate, map[string]interface{}{
-					"where": map[string]interface{}{"id": *v.ID},
-					"data": map[string]interface{}{
-						"boot":     *v.Boot,
-						"bus":      *v.Bus,
-						"key":      *v.Key,
-						"type":     models.VMDiskTypeCDROM,
-						"disabled": *v.Disabled,
+				diskToUpdate = append(diskToUpdate, VmDiskUpdate{
+					Where: VmDiskWhereInput{Id: *v.ID},
+					Data: VmDiskUpdateData{
+						Boot:     int(*v.Boot),
+						Bus:      *v.Bus,
+						Key:      *v.Key,
+						Type:     models.VMDiskTypeCDROM,
+						Disabled: *v.Disabled,
 					},
 				})
 			}
@@ -1220,10 +1320,11 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				if vd.VmVolumeId != "" {
 					if origin != nil {
 						// if given volume is mounted, update it
-						var data = make(map[string]interface{})
-						data["boot"] = vd.Boot
-						data["bus"] = vd.Bus
-						data["type"] = *origin.Type
+						var data = VmDiskUpdateData{
+							Boot: vd.Boot,
+							Bus:  vd.Bus,
+							Type: *origin.Type,
+						}
 						if len(vd.VmVolume) > 0 {
 							newVolume := vd.VmVolume[0]
 							if newVolume.Name != *originVolume.Name {
@@ -1236,91 +1337,93 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 							if newVolume.StoragePolicy != *originVolume.ElfStoragePolicy {
 								return diag.Errorf("mounted disk %s's storage policy can not be changed", *originVolume.Name)
 							}
-							data["vm_volume"] = map[string]interface{}{
-								"create": map[string]interface{}{
-									"name":               *originVolume.Name,
-									"path":               newVolume.Path,
-									"size":               newVolume.Size,
-									"elf_storage_policy": *originVolume.ElfStoragePolicy,
-									"local_created_at":   "",
-									"local_id":           "",
-									"mounting":           *originVolume.Mounting,
-									"sharing":            *originVolume.Sharing,
-									"cluster": map[string]interface{}{
-										"connect": map[string]interface{}{
-											"id": "",
+							data.VmVolume = &VmVolumeCreateConnectStruct{
+								Create: &VmVolumeCreateInput{
+									Name:             *originVolume.Name,
+									Path:             newVolume.Path,
+									Size:             newVolume.Size,
+									ElfStoragePolicy: *originVolume.ElfStoragePolicy,
+									LocalCreatedAt:   "",
+									LocalId:          "",
+									Mounting:         *originVolume.Mounting,
+									Sharing:          *originVolume.Sharing,
+									Cluster: &ConnectStruct{
+										Connect: &ConnectConnect{
+											Id: "",
 										},
 									},
 								},
 							}
-
 						} else if originVolume != nil {
 							// use original volume
-							data["vm_volume"] = map[string]interface{}{
-								"create": map[string]interface{}{
-									"name":               *originVolume.Name,
-									"path":               *originVolume.Path,
-									"size":               *originVolume.Size,
-									"elf_storage_policy": *originVolume.ElfStoragePolicy,
-									"local_created_at":   "",
-									"local_id":           "",
-									"mounting":           *originVolume.Mounting,
-									"sharing":            *originVolume.Sharing,
-									"cluster": map[string]interface{}{
-										"connect": map[string]interface{}{
-											"id": "",
+							data.VmVolume = &VmVolumeCreateConnectStruct{
+								Create: &VmVolumeCreateInput{
+									Name:             *originVolume.Name,
+									Path:             *originVolume.Path,
+									Size:             *originVolume.Size,
+									ElfStoragePolicy: *originVolume.ElfStoragePolicy,
+									LocalCreatedAt:   "",
+									LocalId:          "",
+									Mounting:         *originVolume.Mounting,
+									Sharing:          *originVolume.Sharing,
+									Cluster: &ConnectStruct{
+										Connect: &ConnectConnect{
+											Id: "",
 										},
 									},
 								},
 							}
 						}
-						diskToUpdate = append(diskToUpdate, map[string]interface{}{
-							"where": map[string]interface{}{
-								"id": vd.Id,
+						diskToUpdate = append(diskToUpdate, VmDiskUpdate{
+							Where: VmDiskWhereInput{
+								Id: vd.Id,
 							},
-							"data": data,
+							Data: data,
 						})
 						delete(curMap, vd.VmVolumeId)
 					} else {
 						// if giving volume is not mounted, mount it
-						var data = make(map[string]interface{})
-						data["boot"] = vd.Boot
-						data["bus"] = vd.Bus
-						data["type"] = models.VMDiskTypeDISK
-						data["vm_volume"] = map[string]interface{}{
-							"connect": map[string]interface{}{
-								"id": vd.VmVolumeId,
+						var data = VmDiskCreate{
+							Boot: vd.Boot,
+							Bus:  vd.Bus,
+							Type: models.VMDiskTypeDISK,
+							VmVolume: &VmVolumeCreateConnectStruct{
+								Connect: &ConnectConnect{
+									Id: vd.VmVolumeId,
+								},
 							},
 						}
 						diskToCreate = append(diskToCreate, data)
 					}
 				} else if len(vd.VmVolume) > 0 {
-					// no volume is given, but VmVolume is configured  mean we need to create one
-					var data = make(map[string]interface{})
-					data["boot"] = vd.Boot
-					data["bus"] = vd.Bus
-					data["type"] = models.VMDiskTypeDISK
-					data["vm_volume"] = map[string]interface{}{
-						"create": map[string]interface{}{
-							"name":               vd.VmVolume[0].Name,
-							"path":               "",
-							"size":               vd.VmVolume[0].Size,
-							"elf_storage_policy": vd.VmVolume[0].StoragePolicy,
-							"local_created_at":   "",
-							"local_id":           "",
-							"mounting":           true,
-							"sharing":            false,
-							"cluster": map[string]interface{}{
-								"connect": map[string]interface{}{
-									"id": "",
+					// no volume is given, but VmVolume is configured mean we need to create one
+					var data = VmDiskCreate{
+						Boot: vd.Boot,
+						Bus:  vd.Bus,
+						Type: models.VMDiskTypeDISK,
+						VmVolume: &VmVolumeCreateConnectStruct{
+							Create: &VmVolumeCreateInput{
+								Name:             vd.VmVolume[0].Name,
+								Path:             "",
+								Size:             vd.VmVolume[0].Size,
+								ElfStoragePolicy: vd.VmVolume[0].StoragePolicy,
+								LocalCreatedAt:   "",
+								LocalId:          "",
+								Mounting:         true,
+								Sharing:          false,
+								Cluster: &ConnectStruct{
+									Connect: &ConnectConnect{
+										Id: "",
+									},
 								},
 							},
 						},
 					}
+					diskToCreate = append(diskToCreate, data)
 				}
 				for _, d := range curMap {
-					diskToDelete = append(diskToDelete, map[string]interface{}{
-						"id": *d.ID,
+					diskToDelete = append(diskToDelete, VmDiskDelete{
+						Id: *d.ID,
 					})
 				}
 			}
@@ -1329,85 +1432,49 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			for _, v := range vmDisks {
 				var originVmVolume = curVolumeMap[*v.VMVolume.ID]
 				if originVmVolume != nil {
-					diskToUpdate = append(diskToUpdate, map[string]interface{}{
-						"where": map[string]interface{}{
-							"id": *v.ID,
-						},
-						"data": map[string]interface{}{
-							"boot": *v.Boot,
-							"bus":  *v.Bus,
-							"type": models.VMDiskTypeDISK,
-							"vm_volume": map[string]interface{}{
-								"create": map[string]interface{}{
-									"cluster": map[string]interface{}{
-										"id": "",
+					var data = VmDiskUpdateData{
+						Boot: int(*v.Boot),
+						Bus:  *v.Bus,
+						Type: models.VMDiskTypeDISK,
+						VmVolume: &VmVolumeCreateConnectStruct{
+							Create: &VmVolumeCreateInput{
+								Name:             *originVmVolume.Name,
+								Path:             *originVmVolume.Path,
+								Size:             *originVmVolume.Size,
+								Sharing:          *originVmVolume.Sharing,
+								ElfStoragePolicy: *originVmVolume.ElfStoragePolicy,
+								LocalCreatedAt:   "",
+								LocalId:          "",
+								Mounting:         *originVmVolume.Mounting,
+								Cluster: &ConnectStruct{
+									Connect: &ConnectConnect{
+										Id: "",
 									},
 								},
-								"elf_storage_policy": *originVmVolume.ElfStoragePolicy,
-								"local_created_at":   "",
-								"local_id":           "",
-								"mouting":            *originVmVolume.Mounting,
-								"sharing":            *originVmVolume.Sharing,
-								"name":               *originVmVolume.Name,
-								"path":               *originVmVolume.Path,
-								"size":               *originVmVolume.Size,
 							},
 						},
+					}
+					diskToUpdate = append(diskToUpdate, VmDiskUpdate{
+						Where: VmDiskWhereInput{
+							Id: *v.ID,
+						},
+						Data: data,
 					})
 				}
 			}
 		}
 		sort.SliceStable(diskToCreate, func(i, j int) bool {
-			var boot_i int
-			switch diskToCreate[i]["boot"].(type) {
-			case int:
-				boot_i = diskToCreate[i]["boot"].(int)
-			case int32:
-				boot_i = int(diskToCreate[i]["boot"].(int32))
-			case int64:
-				boot_i = int(diskToCreate[i]["boot"].(int64))
-			}
-			var boot_j int
-			switch diskToCreate[j]["boot"].(type) {
-			case int:
-				boot_j = diskToCreate[j]["boot"].(int)
-			case int32:
-				boot_j = int(diskToCreate[j]["boot"].(int32))
-			case int64:
-				boot_j = int(diskToCreate[j]["boot"].(int64))
-			}
-			return boot_i < boot_j
+			return diskToCreate[i].Boot < diskToCreate[j].Boot
 		})
 
 		sort.SliceStable(diskToUpdate, func(i, j int) bool {
-			data_i := diskToUpdate[i]["data"].(map[string]interface{})
-			data_j := diskToUpdate[j]["data"].(map[string]interface{})
-
-			var boot_i int
-			switch data_i["boot"].(type) {
-			case int:
-				boot_i = data_i["boot"].(int)
-			case int32:
-				boot_i = int(data_i["boot"].(int32))
-			case int64:
-				boot_i = int(data_i["boot"].(int64))
-			}
-			var boot_j int
-			switch data_j["boot"].(type) {
-			case int:
-				boot_j = data_j["boot"].(int)
-			case int32:
-				boot_j = int(data_j["boot"].(int32))
-			case int64:
-				boot_j = int(data_j["boot"].(int64))
-			}
-			return boot_i < boot_j
+			return diskToUpdate[i].Data.Boot < diskToUpdate[j].Data.Boot
 		})
 
-		updateParams["vm_disks"] = map[string]interface{}{
-			"create": diskToCreate,
-			"update": diskToUpdate,
-			"delete": diskToDelete,
+		updateParams.VmDisks = &VmDiskStruct{
+			Create: diskToCreate,
+			Update: diskToUpdate,
+			Delete: diskToDelete,
 		}
 	}
 	// rollback vm to target state first if rollback_to not match rollback from
@@ -1553,7 +1620,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	ct.WaitTaskForResource(d.Id())
+	ct.WaitTaskForResource(d.Id(), "updateVm")
 	return resourceVmRead(ctx, d, meta)
 }
 
