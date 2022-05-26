@@ -300,6 +300,7 @@ func resourceVm() *schema.Resource {
 										},
 										Optional:    true,
 										ForceNew:    true,
+										MaxItems:    3,
 										Description: "Name server address list. At most 3 name servers are allowed.",
 									},
 									"public_keys": {
@@ -1114,6 +1115,24 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 								Cores:   *basic.Vcpu,
 								Sockets: 1,
 							}
+						}
+					}
+				} else {
+					if basic.Vcpu != nil {
+						if *basic.Vcpu%*basic.CpuSockets == 0 {
+							newCore := *basic.Vcpu / *basic.CpuSockets
+							updateParams.Cpu = &CpuStruct{
+								Cores:   newCore,
+								Sockets: *basic.CpuSockets,
+							}
+						} else {
+							return diag.Errorf("vcpu must be divisible by number of cpu sockets")
+						}
+					} else {
+						updateParams.VCpu = *basic.CpuSockets * *originalVm.CPU.Cores
+						updateParams.Cpu = &CpuStruct{
+							Cores:   *originalVm.CPU.Cores,
+							Sockets: *basic.CpuSockets,
 						}
 					}
 				}
