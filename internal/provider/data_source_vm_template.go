@@ -6,55 +6,55 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_snapshot"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func dataSourceVmSnapshot() *schema.Resource {
+func dataSourceVmTemplate() *schema.Resource {
 	return &schema.Resource{
-		Description: "CloudTower vm snapshot data source.",
+		Description: "CloudTower vm template data source.",
 
-		ReadContext: dataSourceVmSnapshotRead,
+		ReadContext: dataSourceVmTemplateRead,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "vm snapshot's name",
+				Description: "vm template's name",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "filter vm snapshot by its name contains characters",
+				Description: "filter vm template by its name contains characters",
 			},
-			"vm_id": {
+			"cluster_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "vm's id of the snapshot",
+				Description: "cluster's id of the template",
 			},
-			"vm_snapshots": {
+			"vm_templates": {
 				Type:        schema.TypeList,
 				Computed:    true,
-				Description: "list of queried vm snapshots",
+				Description: "list of queried vm templates",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"id": {
 							Type:        schema.TypeString,
 							Computed:    true,
-							Description: "snapshots's id",
+							Description: "template's id",
 						},
 						"name": {
 							Type:        schema.TypeString,
 							Computed:    true,
-							Description: "snapshot's name",
+							Description: "template's name",
 						},
 						"create_time": {
 							Type:        schema.TypeString,
 							Computed:    true,
-							Description: "snapshot's create_time",
+							Description: "template's create_time",
 						},
 					},
 				},
@@ -63,37 +63,39 @@ func dataSourceVmSnapshot() *schema.Resource {
 	}
 }
 
-func dataSourceVmSnapshotRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	ct := meta.(*cloudtower.Client)
 
-	gp := vm_snapshot.NewGetVMSnapshotsParams()
-	gp.RequestBody = &models.GetVMSnapshotsRequestBody{
-		Where:   &models.VMSnapshotWhereInput{},
-		OrderBy: models.VMSnapshotOrderByInputLocalCreatedAtASC.Pointer(),
+	gp := vm_template.NewGetVMTemplatesParams()
+	gp.RequestBody = &models.GetVMTemplatesRequestBody{
+		Where:   &models.VMTemplateWhereInput{},
+		OrderBy: models.VMTemplateOrderByInputLocalCreatedAtASC.Pointer(),
 	}
 	if name := d.Get("name").(string); name != "" {
 		gp.RequestBody.Where.Name = &name
 	} else if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
-	if vm_id := d.Get("vm_id").(string); vm_id != "" {
-		gp.RequestBody.Where.VM.ID = &vm_id
+	if cluster_id := d.Get("cluster_id").(string); cluster_id != "" {
+		gp.RequestBody.Where.Cluster = &models.ClusterWhereInput{
+			ID: &cluster_id,
+		}
 	}
-	clusters, err := ct.Api.VMSnapshot.GetVMSnapshots(gp)
+	vm_templates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	output := make([]map[string]interface{}, 0)
-	for _, d := range clusters.Payload {
+	for _, d := range vm_templates.Payload {
 		output = append(output, map[string]interface{}{
 			"id":          d.ID,
 			"name":        d.Name,
 			"create_time": d.LocalCreatedAt,
 		})
 	}
-	err = d.Set("vm_snapshots", output)
+	err = d.Set("vm_templates", output)
 	if err != nil {
 		return diag.FromErr(err)
 	}

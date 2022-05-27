@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
-	"github.com/smartxworks/cloudtower-go-sdk/models"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -63,12 +63,14 @@ func New(version string) func() *schema.Provider {
 				"cloudtower_host":        dataSourceHost(),
 				"cloudtower_vm":          dataSourceVm(),
 				"cloudtower_vm_snapshot": dataSourceVmSnapshot(),
+				"cloudtower_vm_template": dataSourceVmTemplate(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":  resourceDatacenter(),
 				"cloudtower_cluster":     resourceCluster(),
 				"cloudtower_vm":          resourceVm(),
 				"cloudtower_vm_snapshot": resourceVmSnapshot(),
+				"cloudtower_vm_template": resourceVmTemplate(),
 			},
 		}
 

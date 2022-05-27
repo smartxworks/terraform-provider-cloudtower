@@ -37,3 +37,8 @@ website/vendor
 
 vendor
 .vscode
+
+!examples/**/*.tf
+examples/*.tf
+!examples/variable.tf
+*.tfvars

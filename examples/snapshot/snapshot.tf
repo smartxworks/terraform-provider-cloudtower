@@ -7,19 +7,23 @@ terraform {
   }
 }
 
-provider "cloudtower" {
-  username          = "root"
-  user_source       = "LOCAL"
-  cloudtower_server = "yinsw-terraform.dev-cloudtower.smartx.com"
+locals {
+  GB = 1024 * local.MB
+  MB = 1024 * local.KB
+  KB = 1024
 }
 
-# data "cloudtower_datacenter" "sample_dc" {}
+provider "cloudtower" {
+  username          = var.tower_config["user"]
+  user_source       = var.tower_config["source"]
+  cloudtower_server = var.tower_config["server"]
+}
+
 
 resource "cloudtower_cluster" "sample_cluster" {
-  ip            = "192.168.31.156"
-  username      = "root"
-  password      = "111111"
-#  datacenter_id = data.cloudtower_datacenter.sample_dc.datacenters[0].id
+  ip       = var.cluster_config["ip"]
+  username = var.cluster_config["user"]
+  password = var.cluster_config["password"]
 }
 
 data "cloudtower_vlan" "vm_vlan" {
@@ -28,13 +32,8 @@ data "cloudtower_vlan" "vm_vlan" {
   cluster_id = cloudtower_cluster.sample_cluster.id
 }
 
-# data "cloudtower_iso" "ubuntu" {
-#   name_contains = "ubuntu"
-#   cluster_id    = cloudtower_cluster.sample_cluster.id
-# }
-
 data "cloudtower_host" "target_host" {
-  management_ip_contains = "31.156"
+  management_ip_contains = "31.16"
   cluster_id             = cloudtower_cluster.sample_cluster.id
 }
 
@@ -44,7 +43,7 @@ resource "cloudtower_vm" "tf_test" {
   cluster_id          = cloudtower_cluster.sample_cluster.id
   host_id             = data.cloudtower_host.target_host.hosts[0].id
   vcpu                = 4
-  memory              = 4 * 1024 * 1024 * 1024
+  memory              = 4 * local.GB
   ha                  = false
   firmware            = "BIOS"
   status              = "STOPPED"
@@ -54,14 +53,14 @@ resource "cloudtower_vm" "tf_test" {
     boot   = 2
     iso_id = ""
   }
-  
+
   disk {
     boot = 1
     bus  = "VIRTIO"
     vm_volume {
       storage_policy = "REPLICA_2_THIN_PROVISION"
       name           = "d1"
-      size           = 20 * 1024 * 1024 * 1024
+      size           = 20 * local.GB
     }
   }
 
@@ -71,14 +70,16 @@ resource "cloudtower_vm" "tf_test" {
 }
 
 resource "cloudtower_vm_snapshot" "tf_test_snapshot" {
-  name        = "tf-test-snapshot"
-  vm_id       = cloudtower_vm.tf_test.id
+  name  = "tf-test-snapshot"
+  vm_id = cloudtower_vm.tf_test.id
 }
 
 resource "cloudtower_vm" "tf_test_vm_from_snapshot" {
-  name         = "tf-test-vm-from-snapshot"
-  cluster_id   = cloudtower_cluster.sample_cluster.id
-  rebuild_from = cloudtower_vm_snapshot.tf_test_snapshot.id
-  ha           = false
-  memory       = 2 * 1024 * 1024 * 1024
+  name       = "tf-test-vm-from-snapshot"
+  cluster_id = cloudtower_cluster.sample_cluster.id
+  create_effect {
+    rebuild_from_snapshot = cloudtower_vm_snapshot.tf_test_snapshot.id
+  }
+  ha     = false
+  memory = 2 * local.GB
 }
