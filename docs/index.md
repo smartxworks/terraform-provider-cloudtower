@@ -18,7 +18,7 @@ description: |-
 ### Required
 
 - **password** (String) The user password for CloudTower API operations.
-- **user_source** (String) The source type of user, support LOCAL and LDAP.
+- **user_source** (String) The source type of user
 - **username** (String) The username for CloudTower API operations.
 
 ### Optional
