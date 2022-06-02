@@ -53,7 +53,27 @@ func resourceVm() *schema.Resource {
 				Type:        schema.TypeFloat,
 				Optional:    true,
 				Computed:    true,
-				Description: "VM's memory, in the unit of byte",
+				Description: "VM's memory, in the unit of byte, must be a multiple of 512MB, long value, ignore the decimal point",
+				ValidateDiagFunc: func(v interface{}, _ cty.Path) diag.Diagnostics {
+					var diags diag.Diagnostics
+					val, ok := v.(float64)
+					if !ok {
+						return append(diags, diag.Diagnostic{
+							Severity: diag.Error,
+							Summary:  "Wrong type",
+							Detail:   "Memory should be a number",
+						})
+					}
+					intVal := int64(val)
+					if intVal%512*1024 != 0 {
+						return append(diags, diag.Diagnostic{
+							Severity: diag.Error,
+							Summary:  "Wrong type",
+							Detail:   "Memory should be a multiple of 512MB",
+						})
+					}
+					return diags
+				},
 			},
 			"ha": {
 				Type:        schema.TypeBool,
@@ -65,7 +85,8 @@ func resourceVm() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
-				Description:  "VM's firmware",
+				ForceNew:     true,
+				Description:  "VM's firmware, forcenew as it isn't able to modify after create, must be one of 'BIOS', 'UEFI'",
 				ValidateFunc: validation.StringInSlice([]string{"BIOS", "UEFI"}, false),
 			},
 			"status": {
