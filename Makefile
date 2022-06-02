@@ -54,13 +54,13 @@ MvCmd =
 CleanRegistryCmd = 
 ifeq ($(GOOS),windows)
 	BuildTarget = .\bin\terraform-provider-cloudtower.exe
-	LocalRegistry = $(APPDATA)\terraform.d\plugins\registry.terraform.io\smartx\cloudtower\$(version)\$(GOOS)_$(GOARCH)
+	LocalRegistry = $(APPDATA)\terraform.d\plugins\registry.terraform.io\smartxworks\cloudtower\$(version)\$(GOOS)_$(GOARCH)
 	MkdirCmd = mkdir $(LocalRegistry)
 	MvCmd = move $(BuildTarget) $(LocalRegistry)
 	CleanRegistryCmd = if exist "$(LocalRegistry)" rmdir /S /Q $(LocalRegistry)
 else
 	BuildTarget = ./bin/terraform-provider-cloudtower
-	LocalRegistry = ~/.terraform.d/plugins/registry.terraform.io/smartx/cloudtower/$(version)/$(GOOS)_$(GOARCH)/
+	LocalRegistry = ~/.terraform.d/plugins/registry.terraform.io/smartxworks/cloudtower/$(version)/$(GOOS)_$(GOARCH)/
 	MkdirCmd = mkdir -p $(LocalRegistry)
 	MvCmd = mv $(BuildTarget) $(LocalRegistry)
 	CleanRegistryCmd = if [ -d "$(LocalRegistry)" ]; then rm -rf $(LocalRegistry); fi

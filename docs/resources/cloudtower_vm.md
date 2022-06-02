@@ -28,13 +28,13 @@ CloudTower vm resource.
 - **create_effect** (Block List, Max: 1) (see [below for nested schema](#nestedblock--create_effect))
 - **description** (String) VM's description
 - **disk** (Block List) VM's virtual disks (see [below for nested schema](#nestedblock--disk))
-- **firmware** (String) VM's firmware
+- **firmware** (String) VM's firmware, forcenew as it isn't able to modify after create, must be one of 'BIOS', 'UEFI'
 - **folder_id** (String) VM's folder id
 - **force_status_change** (Boolean) force VM's status change, will apply when power off or restart
 - **guest_os_type** (String) VM's guest OS type
 - **ha** (Boolean) whether VM is HA or not
 - **host_id** (String) VM's host id
-- **memory** (Number) VM's memory, in the unit of byte
+- **memory** (Number) VM's memory, in the unit of byte, must be a multiple of 512MB, long value, ignore the decimal point
 - **nic** (Block List) VM's virtual nic (see [below for nested schema](#nestedblock--nic))
 - **rollback_to** (String) Vm is going to rollback to target snapshot
 - **status** (String) VM's status
