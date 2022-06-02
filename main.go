@@ -37,7 +37,7 @@ func main() {
 	opts := &plugin.ServeOpts{ProviderFunc: provider.New(version)}
 
 	if debugMode {
-		err := plugin.Debug(context.Background(), "registry.terraform.io/smartx/cloudtower", opts)
+		err := plugin.Debug(context.Background(), "registry.terraform.io/smartxworks/cloudtower", opts)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
