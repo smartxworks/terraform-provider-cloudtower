@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     cloudtower = {
-      version = "~> 0.1.6"
+      version = "~> 0.1.7"
       source  = "registry.terraform.io/smartxworks/cloudtower"
     }
   }
