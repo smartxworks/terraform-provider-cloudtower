@@ -870,6 +870,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{
 			{
 				IsFullCopy:  &isFullCopy,
+				Status:      status.Status,
 				Name:        &basic.Name,
 				ClusterID:   clusterId,
 				HostID:      basic.HostId,
