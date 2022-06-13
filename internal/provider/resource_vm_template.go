@@ -70,6 +70,105 @@ func resourceVmTemplate() *schema.Resource {
 				Computed:    true,
 				Description: "VM template's id",
 			},
+			"disks": {
+				Type: schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"boot": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "disk's boot order",
+						},
+						"bus": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "disk's bus",
+						},
+						"storage_policy": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "vm volume's storage policy",
+						},
+						"name": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "vm volume's name",
+						},
+						"size": {
+							Type:        schema.TypeFloat,
+							Computed:    true,
+							Description: "vm volume's size, in the unit of byte",
+						},
+						"path": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "vm volume's iscsi LUN path",
+						},
+					},
+				},
+				Computed:    true,
+				Description: "template's disks",
+			},
+			"cd_roms": {
+				Type: schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"boot": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "cd-rom's boot order",
+						},
+						"elf_image_id": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Optional:    true,
+							Description: "cd-rom's elf image id",
+						},
+						"svt_image_id": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Optional:    true,
+							Description: "cd-rom's svt image id",
+						},
+					},
+				},
+				Computed:    true,
+				Description: "template's cd_rom",
+			},
+			"nics": {
+				Type: schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"vlan_id": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "specific the vlan's id the template nic is using",
+						},
+						"enabled": {
+							Type:        schema.TypeBool,
+							Description: "whether the template nic is enabled",
+							Computed:    true,
+						},
+						"mirror": {
+							Type:        schema.TypeBool,
+							Description: "whether the template nic use mirror mode",
+							Computed:    true,
+						},
+						"model": {
+							Type:        schema.TypeString,
+							Description: "template nic's model",
+							Computed:    true,
+						},
+						"idx": {
+							Type:        schema.TypeInt,
+							Description: "template nic's index",
+							Computed:    true,
+						},
+					},
+				},
+				Computed:    true,
+				Description: "template's nics",
+			},
 		},
 	}
 }
@@ -162,7 +261,73 @@ func resourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta in
 	}
 	template := vmTemplates.Payload[0]
 	if err = d.Set("name", template.Name); err != nil {
-		return diag.FromErr(err)
+		diags = append(diags, diag.FromErr(err)...)
+	}
+	var disks []map[string]interface{} = make([]map[string]interface{}, 0)
+	var cdroms []map[string]interface{} = make([]map[string]interface{}, 0)
+	for _, disk := range template.VMDisks {
+		if *disk.Type == models.VMDiskTypeDISK {
+			storagePolicy, err := ct.StoragePolicyHelper.GetElfStoragePolicyByLocalId("")
+			if err != nil {
+				// return diag.FromErr(err)
+				diags = append(diags, diag.FromErr(err)...)
+				continue
+			}
+			disks = append(disks, map[string]interface{}{
+				"boot":           disk.Boot,
+				"bus":            disk.Bus,
+				"storage_policy": storagePolicy,
+				"name":           disk.DiskName,
+				"size":           disk.Size,
+				"path":           disk.Path,
+			})
+		} else if *disk.Type == models.VMDiskTypeCDROM {
+			var elfImageId = ""
+			var svtImageId = ""
+			if disk.ElfImageLocalID != nil {
+				elfImage, _ := ct.CdRomHelper.GetElfImageFromLocalId(*disk.ElfImageLocalID)
+				if elfImage != nil {
+					elfImageId = *elfImage.ID
+				}
+			}
+			if disk.SvtImageLocalID != nil {
+				svtImage, _ := ct.CdRomHelper.GetSvtIMageFromLocalId(*disk.SvtImageLocalID)
+				if svtImage != nil {
+					svtImageId = *svtImage.ID
+				}
+			}
+			cdroms = append(cdroms, map[string]interface{}{
+				"boot":         disk.Boot,
+				"elf_image_id": elfImageId,
+				"svt_image_id": svtImageId,
+			})
+		}
+	}
+	if err = d.Set("disks", disks); err != nil {
+		diags = append(diags, diag.FromErr(err)...)
+	}
+	if err = d.Set("cd_rom", cdroms); err != nil {
+		diags = append(diags, diag.FromErr(err)...)
+	}
+	var nics []map[string]interface{} = make([]map[string]interface{}, 0)
+	for _, nic := range template.VMNics {
+		nicVlan, err := ct.VlanHelper.GetVlanFromLocalId(*nic.Vlan.VlanLocalID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		nics = append(nics, map[string]interface{}{
+			"vlan_id": nicVlan.ID,
+			"enabled": nic.Enabled,
+			"mirror":  nic.Mirror,
+			"model":   nic.Model,
+			"idx":     nic.Index,
+		})
+	}
+	if err = d.Set("nics", nics); err != nil {
+		diags = append(diags, diag.FromErr(err)...)
+	}
+	if diags.HasError() {
+		return diags
 	}
 	return diags
 }
