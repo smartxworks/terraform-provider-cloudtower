@@ -17,20 +17,20 @@ CloudTower cluster data source.
 
 ### Optional
 
-- **id** (String) The ID of this resource.
-- **name** (String) filter clusters by name
-- **name_contains** (String) filter clusters by name contain a certain string
+- `name` (String) filter clusters by name
+- `name_contains` (String) filter clusters by name contain a certain string
 
 ### Read-Only
 
-- **clusters** (List of Object) list of clusters (see [below for nested schema](#nestedatt--clusters))
+- `clusters` (List of Object) list of clusters (see [below for nested schema](#nestedatt--clusters))
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--clusters"></a>
 ### Nested Schema for `clusters`
 
 Read-Only:
 
-- **id** (String)
-- **name** (String)
+- `id` (String)
+- `name` (String)
 
 

@@ -9,23 +9,14 @@ import (
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 )
 
-type CdRomHelper struct {
-	client *apiclient.Cloudtower
-}
-
-func NewCdRomHelper(client *apiclient.Cloudtower) *CdRomHelper {
-	return &CdRomHelper{
-		client: client,
-	}
-}
-func (helper *CdRomHelper) GetElfImageFromLocalId(localId string) (*models.ElfImage, error) {
+func GetElfImageFromLocalId(client *apiclient.Cloudtower, localId string) (*models.ElfImage, error) {
 	params := elf_image.NewGetElfImagesParams()
 	params.RequestBody = &models.GetElfImagesRequestBody{
 		Where: &models.ElfImageWhereInput{
 			LocalID: &localId,
 		},
 	}
-	res, err := helper.client.ElfImage.GetElfImages(params)
+	res, err := client.ElfImage.GetElfImages(params)
 	if err != nil {
 		return nil, err
 	}
@@ -35,14 +26,14 @@ func (helper *CdRomHelper) GetElfImageFromLocalId(localId string) (*models.ElfIm
 	return res.Payload[0], nil
 }
 
-func (helper *CdRomHelper) GetSvtIMageFromLocalId(localId string) (*models.SvtImage, error) {
+func GetSvtIMageFromLocalId(client *apiclient.Cloudtower, localId string) (*models.SvtImage, error) {
 	params := svt_image.NewGetSvtImagesParams()
 	params.RequestBody = &models.GetSvtImagesRequestBody{
 		Where: &models.SvtImageWhereInput{
 			LocalID: &localId,
 		},
 	}
-	res, err := helper.client.SvtImage.GetSvtImages(params)
+	res, err := client.SvtImage.GetSvtImages(params)
 	if err != nil {
 		return nil, err
 	}

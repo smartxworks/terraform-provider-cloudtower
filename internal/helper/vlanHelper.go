@@ -8,24 +8,14 @@ import (
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 )
 
-type VlanHelper struct {
-	client *apiclient.Cloudtower
-}
-
-func NewVlanHelper(client *apiclient.Cloudtower) *VlanHelper {
-	return &VlanHelper{
-		client: client,
-	}
-}
-
-func (helper *VlanHelper) GetVlanFromLocalId(localId string) (*models.Vlan, error) {
+func GetVlanFromLocalId(client *apiclient.Cloudtower, localId string) (*models.Vlan, error) {
 	params := vlan.NewGetVlansParams()
 	params.RequestBody = &models.GetVlansRequestBody{
 		Where: &models.VlanWhereInput{
 			LocalID: &localId,
 		},
 	}
-	res, err := helper.client.Vlan.GetVlans(params)
+	res, err := client.Vlan.GetVlans(params)
 	if err != nil {
 		return nil, err
 	}

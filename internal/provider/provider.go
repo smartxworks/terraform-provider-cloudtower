@@ -60,6 +60,7 @@ func New(version string) func() *schema.Provider {
 				"cloudtower_cluster":     dataSourceCluster(),
 				"cloudtower_vlan":        dataSourceVlan(),
 				"cloudtower_iso":         dataSourceIso(),
+				"cloudtower_svt_iso":     dataSourceSvtImage(),
 				"cloudtower_host":        dataSourceHost(),
 				"cloudtower_vm":          dataSourceVm(),
 				"cloudtower_vm_snapshot": dataSourceVmSnapshot(),

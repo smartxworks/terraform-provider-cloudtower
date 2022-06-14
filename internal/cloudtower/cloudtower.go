@@ -8,7 +8,6 @@ import (
 
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
-	helper "github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/hasura/go-graphql-client"
 	apiclient "github.com/smartxworks/cloudtower-go-sdk/v2/client"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/organization"
@@ -34,17 +33,14 @@ func FloatPtr(f float64) *float64 {
 }
 
 type Client struct {
-	server              string
-	username            string
-	passwd              string
-	source              models.UserSource
-	token               string
-	OrgId               string
-	Api                 *apiclient.Cloudtower
-	GraphqlApi          *graphql.Client
-	StoragePolicyHelper *helper.StoragePolicyHelper
-	CdRomHelper         *helper.CdRomHelper
-	VlanHelper          *helper.VlanHelper
+	server     string
+	username   string
+	passwd     string
+	source     models.UserSource
+	token      string
+	OrgId      string
+	Api        *apiclient.Cloudtower
+	GraphqlApi *graphql.Client
 }
 
 func NewClient(server string, username string, passwd string, source models.UserSource) (*Client, error) {
@@ -83,9 +79,6 @@ func NewClient(server string, username string, passwd string, source models.User
 		GraphqlApi: graphqlClient.WithRequestModifier(func(r *http.Request) {
 			r.Header.Set("Authorization", *loginResp.Payload.Data.Token)
 		}),
-		StoragePolicyHelper: helper.NewStoragePolicyHelper(api),
-		CdRomHelper:         helper.NewCdRomHelper(api),
-		VlanHelper:          helper.NewVlanHelper(api),
 	}, nil
 }
 

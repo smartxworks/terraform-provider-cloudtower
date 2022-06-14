@@ -17,16 +17,53 @@ CloudTower VM template resource
 
 ### Required
 
-- **cloud_init_supported** (Boolean) If the cloud-init is installed or not
-- **name** (String) The name of VM template
-- **src_vm_id** (String) Id of source vm from created vm to be cloned from
+- `cloud_init_supported` (Boolean) If the cloud-init is installed or not
+- `name` (String) The name of VM template
+- `src_vm_id` (String) Id of source vm from created vm to be cloned from
 
 ### Optional
 
-- **description** (String) VM template's description
+- `description` (String) VM template's description
 
 ### Read-Only
 
-- **id** (String) VM template's id
+- `cd_roms` (List of Object) template's cd_rom (see [below for nested schema](#nestedatt--cd_roms))
+- `disks` (List of Object) template's disks (see [below for nested schema](#nestedatt--disks))
+- `id` (String) VM template's id
+- `nics` (List of Object) template's nics (see [below for nested schema](#nestedatt--nics))
+
+<a id="nestedatt--cd_roms"></a>
+### Nested Schema for `cd_roms`
+
+Read-Only:
+
+- `boot` (Number)
+- `elf_image_id` (String)
+- `svt_image_id` (String)
+
+
+<a id="nestedatt--disks"></a>
+### Nested Schema for `disks`
+
+Read-Only:
+
+- `boot` (Number)
+- `bus` (String)
+- `name` (String)
+- `path` (String)
+- `size` (Number)
+- `storage_policy` (String)
+
+
+<a id="nestedatt--nics"></a>
+### Nested Schema for `nics`
+
+Read-Only:
+
+- `enabled` (Boolean)
+- `idx` (Number)
+- `mirror` (Boolean)
+- `model` (String)
+- `vlan_id` (String)
 
 

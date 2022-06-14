@@ -8,37 +8,28 @@ import (
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 )
 
-type StoragePolicyHelper struct {
-	client           *apiclient.Cloudtower
-	storagePolicyMap *map[string]string
-}
-
-func NewStoragePolicyHelper(client *apiclient.Cloudtower) *StoragePolicyHelper {
-	return &StoragePolicyHelper{
-		storagePolicyMap: nil,
-		client:           client,
+func GetElfStoragePolicyByLocalId(client *apiclient.Cloudtower, localId string) (string, error) {
+	params := elf_storage_policy.NewGetElfStoragePoliciesParams()
+	params.RequestBody = &models.GetElfStoragePoliciesRequestBody{
+		Where: &models.ElfStoragePolicyWhereInput{
+			LocalIDEndsWith: &localId,
+		},
 	}
-}
-
-func (helper *StoragePolicyHelper) GetElfStoragePolicyByLocalId(localId string) (string, error) {
-	if helper.storagePolicyMap == nil {
-		storagePolicyMap := make(map[string]string)
-		params := elf_storage_policy.NewGetElfStoragePoliciesParams()
-		params.RequestBody = &models.GetElfStoragePoliciesRequestBody{}
-		res, err := helper.client.ElfStoragePolicy.GetElfStoragePolicies(params)
-		if err != nil {
-			return "", err
-		}
-		for _, policy := range res.Payload {
-			//FIXME: perhap the localid's length is not always the same
-			realLocalId := (*policy.LocalID)[37:]
-			storagePolicyMap[realLocalId] = *policy.Name
-		}
-		helper.storagePolicyMap = &storagePolicyMap
+	res, err := client.ElfStoragePolicy.GetElfStoragePolicies(params)
+	if err != nil {
+		return "", err
 	}
-	if val, ok := (*helper.storagePolicyMap)[localId]; ok {
-		return val, nil
+	if len(res.Payload) == 0 {
+		return "", fmt.Errorf("no storage policy found for local id: %s", localId)
 	} else {
-		return "", fmt.Errorf("storage policy %s not found", localId)
+		replicaNum := *res.Payload[0].ReplicaNum
+		var provision string
+		isThinProvision := *res.Payload[0].ThinProvision
+		if isThinProvision == true {
+			provision = "THIN"
+		} else {
+			provision = "THICK"
+		}
+		return fmt.Sprintf("REPLICA_%d_%s_PROVISION", replicaNum, provision), nil
 	}
 }

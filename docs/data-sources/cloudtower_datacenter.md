@@ -17,20 +17,20 @@ CloudTower datacenter data source.
 
 ### Optional
 
-- **id** (String) The ID of this resource.
-- **name** (String) filter datacenters by name
-- **name_contains** (String) filter datacenters by name contain a certain string
+- `name` (String) filter datacenters by name
+- `name_contains` (String) filter datacenters by name contain a certain string
 
 ### Read-Only
 
-- **datacenters** (List of Object) list of datacenters (see [below for nested schema](#nestedatt--datacenters))
+- `datacenters` (List of Object) list of datacenters (see [below for nested schema](#nestedatt--datacenters))
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--datacenters"></a>
 ### Nested Schema for `datacenters`
 
 Read-Only:
 
-- **id** (String)
-- **name** (String)
+- `id` (String)
+- `name` (String)
 
 

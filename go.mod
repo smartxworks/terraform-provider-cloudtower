@@ -8,8 +8,8 @@ require (
 	github.com/hashicorp/terraform-plugin-go v0.9.1 // indirect
 	github.com/hashicorp/terraform-plugin-log v0.4.0 // indirect
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.17.0
-	github.com/smartxworks/cloudtower-go-sdk/v2 v2.0.0
 	github.com/hasura/go-graphql-client v0.7.0
+	github.com/smartxworks/cloudtower-go-sdk/v2 v2.0.1-0.20220613030729-f4c85e8772f6
 )
 
 require (

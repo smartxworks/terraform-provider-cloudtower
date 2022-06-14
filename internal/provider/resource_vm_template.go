@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
@@ -267,7 +268,7 @@ func resourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta in
 	var cdroms []map[string]interface{} = make([]map[string]interface{}, 0)
 	for _, disk := range template.VMDisks {
 		if *disk.Type == models.VMDiskTypeDISK {
-			storagePolicy, err := ct.StoragePolicyHelper.GetElfStoragePolicyByLocalId("")
+			storagePolicy, err := helper.GetElfStoragePolicyByLocalId(ct.Api, *disk.StoragePolicyUUID)
 			if err != nil {
 				// return diag.FromErr(err)
 				diags = append(diags, diag.FromErr(err)...)
@@ -285,13 +286,13 @@ func resourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta in
 			var elfImageId = ""
 			var svtImageId = ""
 			if disk.ElfImageLocalID != nil {
-				elfImage, _ := ct.CdRomHelper.GetElfImageFromLocalId(*disk.ElfImageLocalID)
+				elfImage, _ := helper.GetElfImageFromLocalId(ct.Api, *disk.ElfImageLocalID)
 				if elfImage != nil {
 					elfImageId = *elfImage.ID
 				}
 			}
 			if disk.SvtImageLocalID != nil {
-				svtImage, _ := ct.CdRomHelper.GetSvtIMageFromLocalId(*disk.SvtImageLocalID)
+				svtImage, _ := helper.GetSvtIMageFromLocalId(ct.Api, *disk.SvtImageLocalID)
 				if svtImage != nil {
 					svtImageId = *svtImage.ID
 				}
@@ -311,7 +312,7 @@ func resourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta in
 	}
 	var nics []map[string]interface{} = make([]map[string]interface{}, 0)
 	for _, nic := range template.VMNics {
-		nicVlan, err := ct.VlanHelper.GetVlanFromLocalId(*nic.Vlan.VlanLocalID)
+		nicVlan, err := helper.GetVlanFromLocalId(ct.Api, *nic.Vlan.VlanLocalID)
 		if err != nil {
 			return diag.FromErr(err)
 		}
