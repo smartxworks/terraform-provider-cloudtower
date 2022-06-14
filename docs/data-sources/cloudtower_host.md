@@ -17,27 +17,27 @@ CloudTower host data source.
 
 ### Optional
 
-- **cluster_id** (String) filter hosts by cluster id
-- **data_ip** (String) filter hosts by data IP
-- **data_ip_contains** (String) filter hosts by data IP contain a certain string
-- **id** (String) The ID of this resource.
-- **management_ip** (String) filter hosts by management IP
-- **management_ip_contains** (String) filter hosts by management IP contain a certain string
-- **name** (String) filter hosts by name
-- **name_contains** (String) filter hosts by name contain a certain string
+- `cluster_id` (String) filter hosts by cluster id
+- `data_ip` (String) filter hosts by data IP
+- `data_ip_contains` (String) filter hosts by data IP contain a certain string
+- `management_ip` (String) filter hosts by management IP
+- `management_ip_contains` (String) filter hosts by management IP contain a certain string
+- `name` (String) filter hosts by name
+- `name_contains` (String) filter hosts by name contain a certain string
 
 ### Read-Only
 
-- **hosts** (List of Object) list of hosts (see [below for nested schema](#nestedatt--hosts))
+- `hosts` (List of Object) list of hosts (see [below for nested schema](#nestedatt--hosts))
+- `id` (String) The ID of this resource.
 
 <a id="nestedatt--hosts"></a>
 ### Nested Schema for `hosts`
 
 Read-Only:
 
-- **data_ip** (String)
-- **id** (String)
-- **management_ip** (String)
-- **name** (String)
+- `data_ip` (String)
+- `id` (String)
+- `management_ip` (String)
+- `name` (String)
 
 

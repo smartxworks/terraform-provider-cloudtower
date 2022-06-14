@@ -17,12 +17,15 @@ CloudTower vm snapshot resource
 
 ### Required
 
-- **name** (String) The name of snapshot
-- **vm_id** (String) The id of vm to the snapshot belongs to
+- `name` (String) The name of snapshot
+- `vm_id` (String) The id of vm to the snapshot belongs to
 
 ### Optional
 
-- **consistent_type** (String) The consistent type of snapshot
-- **id** (String) The ID of this resource.
+- `consistent_type` (String) The consistent type of snapshot
+
+### Read-Only
+
+- `id` (String) The ID of this resource.
 
 

@@ -17,10 +17,10 @@ CloudTower datacenter resource.
 
 ### Required
 
-- **name** (String) datacenter's name
+- `name` (String) datacenter's name
 
 ### Read-Only
 
-- **id** (String) datacenter's id
+- `id` (String) datacenter's id
 
 

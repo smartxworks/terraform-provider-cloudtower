@@ -17,17 +17,17 @@ CloudTower cluster resource.
 
 ### Required
 
-- **ip** (String) cluster's IP
-- **password** (String) cluster's password
-- **username** (String) cluster's username
+- `ip` (String) cluster's IP
+- `password` (String) cluster's password
+- `username` (String) cluster's username
 
 ### Optional
 
-- **datacenter_id** (String) the id of the datacenter this cluster belongs to
+- `datacenter_id` (String) the id of the datacenter this cluster belongs to
 
 ### Read-Only
 
-- **id** (String) cluster's id
-- **name** (String) cluster's name
+- `id` (String) cluster's id
+- `name` (String) cluster's name
 
 

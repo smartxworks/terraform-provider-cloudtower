@@ -158,9 +158,13 @@ func resourceVm() *schema.Resource {
 									},
 									"path": {
 										Type:        schema.TypeString,
-										Optional:    true,
 										Computed:    true,
 										Description: "the VM volume's iscsi LUN path",
+									},
+									"origin_path": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Description: "the VM volume will create base on the path",
 									},
 									"id": {
 										Type:        schema.TypeString,
@@ -276,6 +280,7 @@ func resourceVm() *schema.Resource {
 				Type:     schema.TypeList,
 				MaxItems: 1,
 				Optional: true,
+				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"clone_from_vm": {
@@ -502,6 +507,7 @@ type VmDiskVmVolume struct {
 	Name          string                              `json:"name"`
 	Size          int64                               `json:"size"`
 	Path          string                              `json:"path"`
+	OriginPath    string                              `json:"origin_path"`
 }
 
 type CdRom struct {
@@ -679,8 +685,8 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		err = json.Unmarshal(bytes, &_cdRoms)
 		for _, cdRom := range _cdRoms {
 			params := &models.VMCdRomParams{
-				Boot:  &cdRom.Boot,
-				Index: &cdRom.Boot,
+				Boot: &cdRom.Boot,
+				// Index: &cdRom.Boot,
 			}
 			if cdRom.IsoId != "" {
 				params.ElfImageID = &cdRom.IsoId
@@ -734,12 +740,13 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	for _, disk := range disks {
 		boot := int32(disk.Boot)
 		if disk.VmVolumeId != "" {
-			mountDisks = append(mountDisks, &models.MountDisksParams{
+			params := &models.MountDisksParams{
 				Boot:       &boot,
 				Bus:        &disk.Bus,
 				VMVolumeID: &disk.VmVolumeId,
-				Index:      &boot,
-			})
+				// Index:      &boot,
+			}
+			mountDisks = append(mountDisks, params)
 		} else if disk.VmVolume != nil && len(disk.VmVolume) == 1 {
 			volume := disk.VmVolume[0]
 			params := &models.MountNewCreateDisksParams{
@@ -750,10 +757,10 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 					Name:             &volume.Name,
 					Size:             &volume.Size,
 				},
-				Index: &boot,
+				// Index: &boot,
 			}
-			if volume.Path != "" {
-				params.VMVolume.Path = &volume.Path
+			if volume.OriginPath != "" {
+				params.VMVolume.Path = &volume.OriginPath
 			}
 			mountNewCreateDisks = append(mountNewCreateDisks, params)
 		}
@@ -854,17 +861,27 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		var diskParams *models.VMDiskParams = nil
 		removeIndex := make([]int32, 0)
 		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
-			diskParams = &models.VMDiskParams{
-				MountCdRoms:         cdRoms,
-				MountDisks:          mountDisks,
-				MountNewCreateDisks: mountNewCreateDisks,
-			}
 			vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
 			if diags != nil {
 				return diags
 			}
+			var indexPathMap = make(map[string]int32)
+			for i, nfd := range vmDisks {
+				indexPathMap[*nfd.Path] = int32(i)
+			}
+			for _, mncdp := range mountNewCreateDisks {
+				// if the path is from an existed volumn, set its index
+				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+					mncdp.Index = &index
+				}
+			}
 			for idx := range vmDisks {
 				removeIndex = append(removeIndex, int32(idx))
+			}
+			diskParams = &models.VMDiskParams{
+				MountCdRoms:         cdRoms,
+				MountDisks:          mountDisks,
+				MountNewCreateDisks: mountNewCreateDisks,
 			}
 		}
 		cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{

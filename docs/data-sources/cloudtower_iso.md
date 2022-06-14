@@ -17,21 +17,21 @@ CloudTower iso data source.
 
 ### Optional
 
-- **cluster_id** (String) filter ISOs by cluster id
-- **id** (String) The ID of this resource.
-- **name** (String) filter ISOs by name
-- **name_contains** (String) filter ISOs by name contain a certain string
+- `cluster_id` (String) filter ISOs by cluster id
+- `name` (String) filter ISOs by name
+- `name_contains` (String) filter ISOs by name contain a certain string
 
 ### Read-Only
 
-- **isos** (List of Object) list of ISOs (see [below for nested schema](#nestedatt--isos))
+- `id` (String) The ID of this resource.
+- `isos` (List of Object) list of ISOs (see [below for nested schema](#nestedatt--isos))
 
 <a id="nestedatt--isos"></a>
 ### Nested Schema for `isos`
 
 Read-Only:
 
-- **id** (String)
-- **name** (String)
+- `id` (String)
+- `name` (String)
 
 

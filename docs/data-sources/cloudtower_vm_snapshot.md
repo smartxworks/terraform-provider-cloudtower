@@ -17,22 +17,22 @@ CloudTower vm snapshot data source.
 
 ### Optional
 
-- **id** (String) The ID of this resource.
-- **name** (String) vm snapshot's name
-- **name_contains** (String) filter vm snapshot by its name contains characters
-- **vm_id** (String) vm's id of the snapshot
+- `name` (String) vm snapshot's name
+- `name_contains` (String) filter vm snapshot by its name contains characters
+- `vm_id` (String) vm's id of the snapshot
 
 ### Read-Only
 
-- **vm_snapshots** (List of Object) list of queried vm snapshots (see [below for nested schema](#nestedatt--vm_snapshots))
+- `id` (String) The ID of this resource.
+- `vm_snapshots` (List of Object) list of queried vm snapshots (see [below for nested schema](#nestedatt--vm_snapshots))
 
 <a id="nestedatt--vm_snapshots"></a>
 ### Nested Schema for `vm_snapshots`
 
 Read-Only:
 
-- **create_time** (String)
-- **id** (String)
-- **name** (String)
+- `create_time` (String)
+- `id` (String)
+- `name` (String)
 
 

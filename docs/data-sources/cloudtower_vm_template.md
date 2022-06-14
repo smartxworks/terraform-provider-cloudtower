@@ -17,22 +17,59 @@ CloudTower vm template data source.
 
 ### Optional
 
-- **cluster_id** (String) cluster's id of the template
-- **id** (String) The ID of this resource.
-- **name** (String) vm template's name
-- **name_contains** (String) filter vm template by its name contains characters
+- `cluster_id` (String) cluster's id of the template
+- `name` (String) vm template's name
+- `name_contains` (String) filter vm template by its name contains characters
 
 ### Read-Only
 
-- **vm_templates** (List of Object) list of queried vm templates (see [below for nested schema](#nestedatt--vm_templates))
+- `id` (String) The ID of this resource.
+- `vm_templates` (List of Object) list of queried vm templates (see [below for nested schema](#nestedatt--vm_templates))
 
 <a id="nestedatt--vm_templates"></a>
 ### Nested Schema for `vm_templates`
 
 Read-Only:
 
-- **create_time** (String)
-- **id** (String)
-- **name** (String)
+- `cd_roms` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--cd_roms))
+- `create_time` (String)
+- `disks` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--disks))
+- `id` (String)
+- `name` (String)
+- `nics` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--nics))
+
+<a id="nestedobjatt--vm_templates--cd_roms"></a>
+### Nested Schema for `vm_templates.cd_roms`
+
+Read-Only:
+
+- `boot` (Number)
+- `elf_image_id` (String)
+- `svt_image_id` (String)
+
+
+<a id="nestedobjatt--vm_templates--disks"></a>
+### Nested Schema for `vm_templates.disks`
+
+Read-Only:
+
+- `boot` (Number)
+- `bus` (String)
+- `name` (String)
+- `path` (String)
+- `size` (Number)
+- `storage_policy` (String)
+
+
+<a id="nestedobjatt--vm_templates--nics"></a>
+### Nested Schema for `vm_templates.nics`
+
+Read-Only:
+
+- `enabled` (Boolean)
+- `idx` (Number)
+- `mirror` (Boolean)
+- `model` (String)
+- `vlan_id` (String)
 
 

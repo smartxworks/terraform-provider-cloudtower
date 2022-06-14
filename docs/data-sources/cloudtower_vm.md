@@ -17,24 +17,24 @@ CloudTower vm data source.
 
 ### Optional
 
-- **cluster_id** (String) filter VMs by cluster id
-- **host_id** (String) filter VMs by host id
-- **id** (String) The ID of this resource.
-- **name** (String) filter VMs by name
-- **name_contains** (String) filter VMs by name contain a certain string
-- **status** (String) filter VMs by status
+- `cluster_id` (String) filter VMs by cluster id
+- `host_id` (String) filter VMs by host id
+- `name` (String) filter VMs by name
+- `name_contains` (String) filter VMs by name contain a certain string
+- `status` (String) filter VMs by status
 
 ### Read-Only
 
-- **vms** (List of Object) list of VMs (see [below for nested schema](#nestedatt--vms))
+- `id` (String) The ID of this resource.
+- `vms` (List of Object) list of VMs (see [below for nested schema](#nestedatt--vms))
 
 <a id="nestedatt--vms"></a>
 ### Nested Schema for `vms`
 
 Read-Only:
 
-- **id** (String)
-- **name** (String)
-- **status** (String)
+- `id` (String)
+- `name` (String)
+- `status` (String)
 
 
