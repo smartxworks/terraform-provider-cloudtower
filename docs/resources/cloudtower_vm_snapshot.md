@@ -26,6 +26,43 @@ CloudTower vm snapshot resource
 
 ### Read-Only
 
+- `cd_roms` (List of Object) template's cd_rom (see [below for nested schema](#nestedatt--cd_roms))
+- `disks` (List of Object) template's disks (see [below for nested schema](#nestedatt--disks))
 - `id` (String) The ID of this resource.
+- `nics` (List of Object) template's nics (see [below for nested schema](#nestedatt--nics))
+
+<a id="nestedatt--cd_roms"></a>
+### Nested Schema for `cd_roms`
+
+Read-Only:
+
+- `boot` (Number)
+- `elf_image_id` (String)
+- `svt_image_id` (String)
+
+
+<a id="nestedatt--disks"></a>
+### Nested Schema for `disks`
+
+Read-Only:
+
+- `boot` (Number)
+- `bus` (String)
+- `name` (String)
+- `path` (String)
+- `size` (Number)
+- `storage_policy` (String)
+
+
+<a id="nestedatt--nics"></a>
+### Nested Schema for `nics`
+
+Read-Only:
+
+- `enabled` (Boolean)
+- `idx` (Number)
+- `mirror` (Boolean)
+- `model` (String)
+- `vlan_id` (String)
 
 

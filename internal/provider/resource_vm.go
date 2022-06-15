@@ -16,6 +16,7 @@ import (
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_disk"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_nic"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_snapshot"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_volume"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
@@ -783,26 +784,44 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	} else if rebuildFrom != "" {
 		// rebuild from target snapshot
 		rp := vm.NewRebuildVMParams()
+		vmDisks, diags := readVmDisksFromSnapshot(ctx, d, ct)
+		if diags != nil {
+			return diags
+		}
+		var indexPathMap = make(map[string]int32)
+		for i, nfd := range vmDisks {
+			indexPathMap[*nfd.Path] = int32(i)
+		}
+		for _, mncdp := range mountNewCreateDisks {
+			// if the path is from an existed volumn, set its index
+			if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+				mncdp.Index = &index
+			}
+		}
+		var diskParams *models.VMDiskParams = nil
+		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
+			diskParams = &models.VMDiskParams{
+				MountCdRoms:         cdRoms,
+				MountDisks:          mountDisks,
+				MountNewCreateDisks: mountNewCreateDisks,
+			}
+		}
 		rp.RequestBody = []*models.VMRebuildParams{
 			{
-				Name:        &basic.Name,
-				ClusterID:   clusterId,
-				Vcpu:        basic.Vcpu,
-				Memory:      basic.Memory,
-				Ha:          basic.Ha,
-				Firmware:    firmware,
-				Status:      status.Status,
-				HostID:      basic.HostId,
-				FolderID:    basic.FolderId,
-				Description: basic.Description,
-				GuestOsType: guestOsType,
-				CPUCores:    basic.CpuCores,
-				CPUSockets:  basic.CpuSockets,
-				VMDisks: &models.VMDiskParams{
-					MountCdRoms:         cdRoms,
-					MountDisks:          mountDisks,
-					MountNewCreateDisks: mountNewCreateDisks,
-				},
+				Name:                  &basic.Name,
+				ClusterID:             clusterId,
+				Vcpu:                  basic.Vcpu,
+				Memory:                basic.Memory,
+				Ha:                    basic.Ha,
+				Firmware:              firmware,
+				Status:                status.Status,
+				HostID:                basic.HostId,
+				FolderID:              basic.FolderId,
+				Description:           basic.Description,
+				GuestOsType:           guestOsType,
+				CPUCores:              basic.CpuCores,
+				CPUSockets:            basic.CpuSockets,
+				VMDisks:               diskParams,
 				VMNics:                vmNics,
 				RebuildFromSnapshotID: &rebuildFrom,
 			},
@@ -814,6 +833,28 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		vms = response.Payload
 	} else if cloneFrom != "" {
 		cp := vm.NewCloneVMParams()
+		vmDisks, vmVolumes, diags := readVmDisks(ctx, d, ct)
+		var pathVolumeMap = make(map[string]*models.VMVolume)
+		for _, v := range vmVolumes {
+			pathVolumeMap[*v.Path] = v
+		}
+		if diags != nil {
+			return diags
+		}
+		var indexVolumeIdMap = make(map[string]int32)
+		for i, nfd := range vmDisks {
+			if *nfd.Type == models.VMDiskTypeDISK {
+				indexVolumeIdMap[*nfd.VMVolume.ID] = int32(i)
+			}
+		}
+		for _, mncdp := range mountNewCreateDisks {
+			// if the path is from an existed volumn, set its index
+			if volume, ok := pathVolumeMap[*mncdp.VMVolume.Path]; ok {
+				if index, ok := indexVolumeIdMap[*volume.ID]; ok {
+					mncdp.Index = &index
+				}
+			}
+		}
 		var diskParams *models.VMDiskParams = nil
 		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
 			diskParams = &models.VMDiskParams{
@@ -1954,10 +1995,28 @@ func readVmDisksFromTemplate(ctx context.Context, d *schema.ResourceData, ct *cl
 	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
 	if err != nil {
 		return nil, diag.FromErr(err)
+	} else if len(vmTemplates.Payload) == 0 {
+		return nil, diag.FromErr(fmt.Errorf("template %s not found", cloneFromTemplate))
 	}
 	return vmTemplates.Payload[0].VMDisks, nil
 }
 
+func readVmDisksFromSnapshot(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.NestedFrozenDisks, diag.Diagnostics) {
+	cloneFromTemplate := d.Get("create_effect.0.rebuild_from_snapshot").(string)
+	gp := vm_snapshot.NewGetVMSnapshotsParams()
+	gp.RequestBody = &models.GetVMSnapshotsRequestBody{
+		Where: &models.VMSnapshotWhereInput{
+			ID: &cloneFromTemplate,
+		},
+	}
+	snapshots, err := ct.Api.VMSnapshot.GetVMSnapshots(gp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	} else if len(snapshots.Payload) == 0 {
+		return nil, diag.FromErr(fmt.Errorf("snapshot %s not found", cloneFromTemplate))
+	}
+	return snapshots.Payload[0].VMDisks, nil
+}
 func readCdRoms(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMDisk, diag.Diagnostics) {
 	id := d.Id()
 	gp := vm_disk.NewGetVMDisksParams()

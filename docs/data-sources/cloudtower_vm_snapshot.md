@@ -31,8 +31,45 @@ CloudTower vm snapshot data source.
 
 Read-Only:
 
+- `cd_roms` (List of Object) (see [below for nested schema](#nestedobjatt--vm_snapshots--cd_roms))
 - `create_time` (String)
+- `disks` (List of Object) (see [below for nested schema](#nestedobjatt--vm_snapshots--disks))
 - `id` (String)
 - `name` (String)
+- `nics` (List of Object) (see [below for nested schema](#nestedobjatt--vm_snapshots--nics))
+
+<a id="nestedobjatt--vm_snapshots--cd_roms"></a>
+### Nested Schema for `vm_snapshots.cd_roms`
+
+Read-Only:
+
+- `boot` (Number)
+- `elf_image_id` (String)
+- `svt_image_id` (String)
+
+
+<a id="nestedobjatt--vm_snapshots--disks"></a>
+### Nested Schema for `vm_snapshots.disks`
+
+Read-Only:
+
+- `boot` (Number)
+- `bus` (String)
+- `name` (String)
+- `path` (String)
+- `size` (Number)
+- `storage_policy` (String)
+
+
+<a id="nestedobjatt--vm_snapshots--nics"></a>
+### Nested Schema for `vm_snapshots.nics`
+
+Read-Only:
+
+- `enabled` (Boolean)
+- `idx` (Number)
+- `mirror` (Boolean)
+- `model` (String)
+- `vlan_id` (String)
 
 
