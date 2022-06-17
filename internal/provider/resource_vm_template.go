@@ -307,7 +307,7 @@ func resourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta in
 	if err = d.Set("disks", disks); err != nil {
 		diags = append(diags, diag.FromErr(err)...)
 	}
-	if err = d.Set("cd_rom", cdroms); err != nil {
+	if err = d.Set("cd_roms", cdroms); err != nil {
 		diags = append(diags, diag.FromErr(err)...)
 	}
 	var nics []map[string]interface{} = make([]map[string]interface{}, 0)
