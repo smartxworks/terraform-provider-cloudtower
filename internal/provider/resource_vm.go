@@ -713,9 +713,13 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		for _, nic := range nics {
 			params := &models.VMNicParams{
 				ConnectVlanID: &nic.VlanId,
-				//FIXME: not to set 0 value to boolean
-				Enabled: nic.Enabled,
-				Mirror:  nic.Mirror,
+				Mirror:        nic.Mirror,
+			}
+			if nic.Enabled != nil {
+				params.Enabled = nic.Enabled
+			} else {
+				_enabled := true
+				params.Enabled = &_enabled
 			}
 			if *nic.Model != "" {
 				params.Model = nic.Model
@@ -794,9 +798,12 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		for _, mncdp := range mountNewCreateDisks {
 			// if the path is from an existed volumn, set its index
-			if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
-				mncdp.Index = &index
+			if mncdp.VMVolume.Path != nil {
+				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+					mncdp.Index = &index
+				}
 			}
+
 		}
 		var diskParams *models.VMDiskParams = nil
 		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
@@ -849,11 +856,14 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		for _, mncdp := range mountNewCreateDisks {
 			// if the path is from an existed volumn, set its index
-			if volume, ok := pathVolumeMap[*mncdp.VMVolume.Path]; ok {
-				if index, ok := indexVolumeIdMap[*volume.ID]; ok {
-					mncdp.Index = &index
+			if mncdp.VMVolume.Path != nil {
+				if volume, ok := pathVolumeMap[*mncdp.VMVolume.Path]; ok {
+					if index, ok := indexVolumeIdMap[*volume.ID]; ok {
+						mncdp.Index = &index
+					}
 				}
 			}
+
 		}
 		var diskParams *models.VMDiskParams = nil
 		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
@@ -912,8 +922,10 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 			for _, mncdp := range mountNewCreateDisks {
 				// if the path is from an existed volumn, set its index
-				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
-					mncdp.Index = &index
+				if mncdp.VMVolume.Path != nil {
+					if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+						mncdp.Index = &index
+					}
 				}
 			}
 			for idx := range vmDisks {
