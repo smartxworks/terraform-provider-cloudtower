@@ -710,16 +710,21 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		for _, nic := range nics {
+		for i, nic := range nics {
 			params := &models.VMNicParams{
 				ConnectVlanID: &nic.VlanId,
 				Mirror:        nic.Mirror,
 			}
-			if nic.Enabled != nil {
-				params.Enabled = nic.Enabled
+			if !*nic.Enabled {
+				_, ok := d.GetOkExists(fmt.Sprintf("nic.%d.enabled", i))
+				if !ok {
+					_enabled := true
+					nic.Enabled = &_enabled
+				} else {
+					params.Enabled = nic.Enabled
+				}
 			} else {
-				_enabled := true
-				params.Enabled = &_enabled
+				params.Enabled = nic.Enabled
 			}
 			if *nic.Model != "" {
 				params.Model = nic.Model
@@ -1828,7 +1833,7 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 	cpuSockets, ok := d.GetOk("cpu_sockets")
 	if ok {
 		cpuSockets := int32(cpuSockets.(int))
-		basicConfig.CpuCores = &cpuSockets
+		basicConfig.CpuSockets = &cpuSockets
 	}
 	return basicConfig, nil
 }
