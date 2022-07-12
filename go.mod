@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.4.0 // indirect
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.17.0
 	github.com/hasura/go-graphql-client v0.7.0
-	github.com/smartxworks/cloudtower-go-sdk/v2 v2.0.1-0.20220613030729-f4c85e8772f6
+	github.com/smartxworks/cloudtower-go-sdk/v2 v2.1.0
 )
 
 require (
@@ -22,7 +22,7 @@ require (
 	github.com/bgentry/speakeasy v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect
-	github.com/go-openapi/runtime v0.23.1
+	github.com/go-openapi/runtime v0.24.1
 	github.com/go-openapi/strfmt v0.21.2
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
