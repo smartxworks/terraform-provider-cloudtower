@@ -285,16 +285,25 @@ func resourceVm() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"clone_from_vm": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Id of source vm from created vm to be cloned from",
+							Type:          schema.TypeString,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: []string{"create_effect.0.clone_from_template", "create_effect.0.rebuild_from_snapshot", "create_effect.0.clone_from_content_library_template"},
+							Description:   "Id of source vm from created vm to be cloned from",
 						},
 						"clone_from_template": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Id of source VM template to be cloned",
+							Type:          schema.TypeString,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: []string{"create_effect.0.clone_from_vm", "create_effect.0.rebuild_from_snapshot", "create_effect.0.clone_from_content_library_template"},
+							Description:   "Id of source VM template to be cloned",
+						},
+						"clone_from_content_library_template": {
+							Type:          schema.TypeString,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: []string{"create_effect.0.clone_from_template", "create_effect.0.rebuild_from_snapshot", "create_effect.0.clone_from_vm"},
+							Description:   "Id of source content library VM template to be cloned",
 						},
 						"is_full_copy": {
 							Type:        schema.TypeBool,
@@ -302,10 +311,11 @@ func resourceVm() *schema.Resource {
 							Description: "If the vm is full copy from template or not",
 						},
 						"rebuild_from_snapshot": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Id of snapshot for created vm to be rebuilt from",
+							Type:          schema.TypeString,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: []string{"create_effect.0.clone_from_template", "create_effect.0.clone_from_vm", "create_effect.0.clone_from_vm"},
+							Description:   "Id of snapshot for created vm to be rebuilt from",
 						},
 						"cloud_init": {
 							Type:        schema.TypeList,
@@ -633,157 +643,17 @@ var updateVm struct {
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-
-	basic, err := expandVmBasicConfig(d)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	var clusterId *string = nil
-	_clusterId, ok := d.GetOk("cluster_id")
-	if ok {
-		_clusterId := _clusterId.(string)
-		clusterId = &_clusterId
-	}
-	var firmware *models.VMFirmware = nil
-	switch d.Get("firmware").(string) {
-	case "BIOS":
-		firmware = models.VMFirmwareBIOS.Pointer()
-	case "UEFI":
-		firmware = models.VMFirmwareUEFI.Pointer()
-	}
-	status, err := expandVmStatusConfig(d)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	var guestOsType *models.VMGuestsOperationSystem = nil
-	switch d.Get("guest_os_type").(string) {
-	case "LINUX":
-		guestOsType = models.VMGuestsOperationSystemLINUX.Pointer()
-	case "WINDOWS":
-		guestOsType = models.VMGuestsOperationSystemWINDOWS.Pointer()
-	case "UNKNOWN":
-		guestOsType = models.VMGuestsOperationSystemUNKNOWN.Pointer()
-	}
-	var disks []*VmDisk
-	if rawDisk, ok := d.GetOk("disk"); ok && rawDisk != "" {
-		bytes, err := json.Marshal(rawDisk)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &disks)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	var cdRoms []*models.VMCdRomParams
-	var _cdRoms []*CdRom
-	if rawCdRom, ok := d.GetOk("cd_rom"); ok && rawCdRom != "" {
-		bytes, err := json.Marshal(rawCdRom)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &_cdRoms)
-		for _, cdRom := range _cdRoms {
-			params := &models.VMCdRomParams{
-				Boot: &cdRom.Boot,
-				// Index: &cdRom.Boot,
-			}
-			if cdRom.IsoId != "" {
-				params.ElfImageID = &cdRom.IsoId
-			}
-			cdRoms = append(cdRoms, params)
-		}
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	var nics []*VmNic
-	var vmNics []*models.VMNicParams
-	if rawNic, ok := d.GetOk("nic"); ok && rawNic != "" {
-		bytes, err := json.Marshal(d.Get("nic"))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		err = json.Unmarshal(bytes, &nics)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		for i, nic := range nics {
-			params := &models.VMNicParams{
-				ConnectVlanID: &nic.VlanId,
-				Mirror:        nic.Mirror,
-			}
-			if !*nic.Enabled {
-				_, ok := d.GetOkExists(fmt.Sprintf("nic.%d.enabled", i))
-				if !ok {
-					_enabled := true
-					nic.Enabled = &_enabled
-				} else {
-					params.Enabled = nic.Enabled
-				}
-			} else {
-				params.Enabled = nic.Enabled
-			}
-			if *nic.Model != "" {
-				params.Model = nic.Model
-			}
-			if *nic.Gateway != "" {
-				params.Gateway = nic.Gateway
-			}
-			if *nic.IPAddress != "" {
-				params.IPAddress = nic.IPAddress
-			}
-			if *nic.MacAddress != "" {
-				params.MacAddress = nic.MacAddress
-			}
-			if *nic.SubnetMask != "" {
-				params.SubnetMask = nic.SubnetMask
-			}
-			vmNics = append(vmNics, params)
-		}
-	}
-
-	mountDisks := make([]*models.MountDisksParams, 0)
-	mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
-	for _, disk := range disks {
-		boot := int32(disk.Boot)
-		if disk.VmVolumeId != "" {
-			params := &models.MountDisksParams{
-				Boot:       &boot,
-				Bus:        &disk.Bus,
-				VMVolumeID: &disk.VmVolumeId,
-				// Index:      &boot,
-			}
-			mountDisks = append(mountDisks, params)
-		} else if disk.VmVolume != nil && len(disk.VmVolume) == 1 {
-			volume := disk.VmVolume[0]
-			params := &models.MountNewCreateDisksParams{
-				Boot: &boot,
-				Bus:  &disk.Bus,
-				VMVolume: &models.MountNewCreateDisksParamsVMVolume{
-					ElfStoragePolicy: &volume.StoragePolicy,
-					Name:             &volume.Name,
-					Size:             &volume.Size,
-				},
-				// Index: &boot,
-			}
-			if volume.OriginPath != "" {
-				params.VMVolume.Path = &volume.OriginPath
-			}
-			mountNewCreateDisks = append(mountNewCreateDisks, params)
-		}
-	}
 	var vms []*models.WithTaskVM
+	var diags diag.Diagnostics
 	rebuildFrom := d.Get("create_effect.0.rebuild_from_snapshot").(string)
 	cloneFrom := d.Get("create_effect.0.clone_from_vm").(string)
 	cloneFromTemplate := d.Get("create_effect.0.clone_from_template").(string)
+	cloneFromContentLibraryTemplate := d.Get("create_effect.0.clone_from_content_library_template").(string)
 	effects := d.Get("create_effect.0").(map[string]interface{})
 	count := 0
 	for k := range effects {
 		if effects[k] != "" {
-			if k == "rebuild_from_snapshot" || k == "clone_from_vm" || k == "lone_from_template" {
+			if k == "rebuild_from_snapshot" || k == "clone_from_vm" || k == "clone_from_template" || k == "clone_from_content_library_template" {
 				count = count + 1
 			}
 		}
@@ -791,252 +661,20 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if count >= 2 {
 		return diag.FromErr(fmt.Errorf("can only set one create effect"))
 	} else if rebuildFrom != "" {
-		// rebuild from target snapshot
-		rp := vm.NewRebuildVMParams()
-		vmDisks, diags := readVmDisksFromSnapshot(ctx, d, ct)
-		if diags != nil {
-			return diags
-		}
-		var indexPathMap = make(map[string]int32)
-		for i, nfd := range vmDisks {
-			indexPathMap[*nfd.Path] = int32(i)
-		}
-		for _, mncdp := range mountNewCreateDisks {
-			// if the path is from an existed volumn, set its index
-			if mncdp.VMVolume.Path != nil {
-				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
-					mncdp.Index = &index
-				}
-			}
-
-		}
-		var diskParams *models.VMDiskParams = nil
-		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
-			diskParams = &models.VMDiskParams{
-				MountCdRoms:         cdRoms,
-				MountDisks:          mountDisks,
-				MountNewCreateDisks: mountNewCreateDisks,
-			}
-		}
-		rp.RequestBody = []*models.VMRebuildParams{
-			{
-				Name:                  &basic.Name,
-				ClusterID:             clusterId,
-				Vcpu:                  basic.Vcpu,
-				Memory:                basic.Memory,
-				Ha:                    basic.Ha,
-				Firmware:              firmware,
-				Status:                status.Status,
-				HostID:                basic.HostId,
-				FolderID:              basic.FolderId,
-				Description:           basic.Description,
-				GuestOsType:           guestOsType,
-				CPUCores:              basic.CpuCores,
-				CPUSockets:            basic.CpuSockets,
-				VMDisks:               diskParams,
-				VMNics:                vmNics,
-				RebuildFromSnapshotID: &rebuildFrom,
-			},
-		}
-		response, err := ct.Api.VM.RebuildVM(rp)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		vms = response.Payload
+		vms, diags = rebuildVmFromSnapshot(rebuildFrom, ctx, d, ct)
 	} else if cloneFrom != "" {
-		cp := vm.NewCloneVMParams()
-		vmDisks, vmVolumes, diags := readVmDisks(ctx, d, ct)
-		var pathVolumeMap = make(map[string]*models.VMVolume)
-		for _, v := range vmVolumes {
-			pathVolumeMap[*v.Path] = v
-		}
-		if diags != nil {
-			return diags
-		}
-		var indexVolumeIdMap = make(map[string]int32)
-		for i, nfd := range vmDisks {
-			if *nfd.Type == models.VMDiskTypeDISK {
-				indexVolumeIdMap[*nfd.VMVolume.ID] = int32(i)
-			}
-		}
-		for _, mncdp := range mountNewCreateDisks {
-			// if the path is from an existed volumn, set its index
-			if mncdp.VMVolume.Path != nil {
-				if volume, ok := pathVolumeMap[*mncdp.VMVolume.Path]; ok {
-					if index, ok := indexVolumeIdMap[*volume.ID]; ok {
-						mncdp.Index = &index
-					}
-				}
-			}
-
-		}
-		var diskParams *models.VMDiskParams = nil
-		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
-			diskParams = &models.VMDiskParams{
-				MountCdRoms:         cdRoms,
-				MountDisks:          mountDisks,
-				MountNewCreateDisks: mountNewCreateDisks,
-			}
-		}
-		cp.RequestBody = []*models.VMCloneParams{
-			{
-				Name:        &basic.Name,
-				ClusterID:   clusterId,
-				Vcpu:        basic.Vcpu,
-				Memory:      basic.Memory,
-				Ha:          basic.Ha,
-				Firmware:    firmware,
-				Status:      status.Status,
-				HostID:      basic.HostId,
-				FolderID:    basic.FolderId,
-				Description: basic.Description,
-				GuestOsType: guestOsType,
-				CPUCores:    basic.CpuCores,
-				CPUSockets:  basic.CpuSockets,
-				VMDisks:     diskParams,
-				VMNics:      vmNics,
-				SrcVMID:     &cloneFrom,
-			},
-		}
-		response, err := ct.Api.VM.CloneVM(cp)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		vms = response.Payload
+		vms, diags = cloneVmFromSourceVm(cloneFrom, ctx, d, ct)
 	} else if cloneFromTemplate != "" {
-		isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
-		if !ok {
-			return diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
-		}
-		isFullCopy := isFullCopyRes.(bool)
-		cvft := vm.NewCreateVMFromTemplateParams()
-		cloudInit, err := expandCloudInitConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		var diskParams *models.VMDiskParams = nil
-		removeIndex := make([]int32, 0)
-		if len(cdRoms)+len(mountDisks)+len(mountNewCreateDisks) > 0 {
-			vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
-			if diags != nil {
-				return diags
-			}
-			var indexPathMap = make(map[string]int32)
-			for i, nfd := range vmDisks {
-				indexPathMap[*nfd.Path] = int32(i)
-			}
-			for _, mncdp := range mountNewCreateDisks {
-				// if the path is from an existed volumn, set its index
-				if mncdp.VMVolume.Path != nil {
-					if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
-						mncdp.Index = &index
-					}
-				}
-			}
-			for idx := range vmDisks {
-				removeIndex = append(removeIndex, int32(idx))
-			}
-			diskParams = &models.VMDiskParams{
-				MountCdRoms:         cdRoms,
-				MountDisks:          mountDisks,
-				MountNewCreateDisks: mountNewCreateDisks,
-			}
-		}
-		cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{
-			{
-				IsFullCopy:  &isFullCopy,
-				Status:      status.Status,
-				Name:        &basic.Name,
-				ClusterID:   clusterId,
-				HostID:      basic.HostId,
-				Description: basic.Description,
-				Vcpu:        basic.Vcpu,
-				FolderID:    basic.FolderId,
-				GuestOsType: guestOsType,
-				Memory:      basic.Memory,
-				CPUCores:    basic.CpuCores,
-				CPUSockets:  basic.CpuSockets,
-				Ha:          basic.Ha,
-				Firmware:    firmware,
-				TemplateID:  &cloneFromTemplate,
-				VMNics:      vmNics,
-				CloudInit:   cloudInit,
-				DiskOperate: &models.VMCreateVMFromTemplateParamsDiskOperate{
-					NewDisks: diskParams,
-					RemoveDisks: &models.VMCreateVMFromTemplateParamsDiskOperateRemoveDisks{
-						DiskIndex: removeIndex,
-					},
-				},
-			},
-		}
-		response, err := ct.Api.VM.CreateVMFromTemplate(cvft)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		vms = response.Payload
+		vms, diags = cloneVmFromVmTemplate(cloneFromTemplate, ctx, d, ct)
+	} else if cloneFromContentLibraryTemplate != "" {
+		vms, diags = cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate, ctx, d, ct)
 	} else {
-		// normal create
-		cvp := vm.NewCreateVMParams()
-		// check status
-		missingFields := make([]string, 0)
-		if basic.Vcpu == nil {
-			missingFields = append(missingFields, "vcpu")
-		}
-		if basic.Ha == nil {
-			missingFields = append(missingFields, "ha")
-		}
-		if basic.Memory == nil {
-			missingFields = append(missingFields, "memory")
-		}
-		if clusterId == nil {
-			missingFields = append(missingFields, "cluster_id")
-		}
-		if status.Status == nil {
-			missingFields = append(missingFields, "status")
-		}
-		if firmware == nil {
-			missingFields = append(missingFields, "firmware")
-		}
-		if len(missingFields) > 0 {
-			return diag.Errorf("Simple create vm need more config, missing fields: %v", missingFields)
-		}
-		if basic.CpuCores == nil {
-			var core int32 = 1
-			basic.CpuCores = &core
-		}
-		if basic.CpuSockets == nil {
-			socket := *basic.Vcpu / *basic.CpuCores
-			basic.CpuSockets = &socket
-		}
-		cvp.RequestBody = []*models.VMCreationParams{{
-			Name:        &basic.Name,
-			ClusterID:   clusterId,
-			Vcpu:        basic.Vcpu,
-			Memory:      basic.Memory,
-			Ha:          basic.Ha,
-			Firmware:    firmware,
-			Status:      status.Status,
-			HostID:      basic.HostId,
-			FolderID:    basic.FolderId,
-			Description: basic.Description,
-			GuestOsType: guestOsType,
-			CPUCores:    basic.CpuCores,
-			CPUSockets:  basic.CpuSockets,
-			VMDisks: &models.VMDiskParams{
-				MountCdRoms:         cdRoms,
-				MountDisks:          mountDisks,
-				MountNewCreateDisks: mountNewCreateDisks,
-			},
-			VMNics: vmNics,
-		}}
-		response, err := ct.Api.VM.CreateVM(cvp)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		vms = response.Payload
+		vms, diags = createBlankVm(ctx, d, ct)
 	}
-
-	err = waitVmTasksFinish(ct, vms)
+	if vms == nil {
+		return diags
+	}
+	err := waitVmTasksFinish(ct, vms)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -1708,14 +1346,14 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				HostID: &hostId,
 			}
 		}
-		mvp := vm.NewMigRateVMParams()
+		mvp := vm.NewMigrateVMParams()
 		mvp.RequestBody = &models.VMMigrateParams{
 			Where: &models.VMWhereInput{
 				ID: &id,
 			},
 			Data: mvpd,
 		}
-		vms, err := ct.Api.VM.MigRateVM(mvp)
+		vms, err := ct.Api.VM.MigrateVM(mvp)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1838,8 +1476,8 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 	return basicConfig, nil
 }
 
-func expandCloudInitConfig(d *schema.ResourceData) (*models.VMCreateVMFromTemplateParamsCloudInit, error) {
-	cloudInit := &models.VMCreateVMFromTemplateParamsCloudInit{}
+func expandCloudInitConfig(d *schema.ResourceData) (*models.TemplateCloudInit, error) {
+	cloudInit := &models.TemplateCloudInit{}
 	defaultPassword, ok := d.GetOk("create_effect.0.cloud_init.0.default_user_password")
 	if ok {
 		defaultPassword := defaultPassword.(string)
@@ -2064,4 +1702,517 @@ func derefAny(v interface{}, fallback interface{}) interface{} {
 		return val
 	}
 	return v
+}
+
+type VmCreateCommon struct {
+	basic               *VmBasicConfig
+	clusterId           *string
+	firmware            *models.VMFirmware
+	status              *VmStatusConfig
+	guestOsType         *models.VMGuestsOperationSystem
+	cdRoms              []*models.VMCdRomParams
+	mountDisks          []*models.MountDisksParams
+	mountNewCreateDisks []*models.MountNewCreateDisksParams
+	vmNics              []*models.VMNicParams
+}
+
+// preprocess common create params for vm create from schema
+// including vm basic, cluster, status, guest_os_type, disks and nics
+func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) (*VmCreateCommon, diag.Diagnostics) {
+	basic, err := expandVmBasicConfig(d)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	var clusterId *string = nil
+	_clusterId, ok := d.GetOk("cluster_id")
+	if ok {
+		_clusterId := _clusterId.(string)
+		clusterId = &_clusterId
+	}
+	var firmware *models.VMFirmware = nil
+	switch d.Get("firmware").(string) {
+	case "BIOS":
+		firmware = models.VMFirmwareBIOS.Pointer()
+	case "UEFI":
+		firmware = models.VMFirmwareUEFI.Pointer()
+	}
+	status, err := expandVmStatusConfig(d)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	var guestOsType *models.VMGuestsOperationSystem = nil
+	switch d.Get("guest_os_type").(string) {
+	case "LINUX":
+		guestOsType = models.VMGuestsOperationSystemLINUX.Pointer()
+	case "WINDOWS":
+		guestOsType = models.VMGuestsOperationSystemWINDOWS.Pointer()
+	default:
+		guestOsType = models.VMGuestsOperationSystemUNKNOWN.Pointer()
+	}
+	var disks []*VmDisk
+	if rawDisk, ok := d.GetOk("disk"); ok && rawDisk != "" {
+		bytes, err := json.Marshal(rawDisk)
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &disks)
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+	}
+
+	var cdRoms []*models.VMCdRomParams
+	var _cdRoms []*CdRom
+	if rawCdRom, ok := d.GetOk("cd_rom"); ok && rawCdRom != "" {
+		bytes, err := json.Marshal(rawCdRom)
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &_cdRoms)
+		for _, cdRom := range _cdRoms {
+			params := &models.VMCdRomParams{
+				Boot: &cdRom.Boot,
+				// Index: &cdRom.Boot,
+			}
+			if cdRom.IsoId != "" {
+				params.ElfImageID = &cdRom.IsoId
+			}
+			cdRoms = append(cdRoms, params)
+		}
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+	}
+
+	var nics []*VmNic
+	var vmNics []*models.VMNicParams
+	if rawNic, ok := d.GetOk("nic"); ok && rawNic != "" {
+		bytes, err := json.Marshal(d.Get("nic"))
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+		err = json.Unmarshal(bytes, &nics)
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+		for i, nic := range nics {
+			params := &models.VMNicParams{
+				ConnectVlanID: &nic.VlanId,
+				Mirror:        nic.Mirror,
+			}
+			if !*nic.Enabled {
+				_, ok := d.GetOkExists(fmt.Sprintf("nic.%d.enabled", i))
+				if !ok {
+					_enabled := true
+					nic.Enabled = &_enabled
+				} else {
+					params.Enabled = nic.Enabled
+				}
+			} else {
+				params.Enabled = nic.Enabled
+			}
+			if *nic.Model != "" {
+				params.Model = nic.Model
+			}
+			if *nic.Gateway != "" {
+				params.Gateway = nic.Gateway
+			}
+			if *nic.IPAddress != "" {
+				params.IPAddress = nic.IPAddress
+			}
+			if *nic.MacAddress != "" {
+				params.MacAddress = nic.MacAddress
+			}
+			if *nic.SubnetMask != "" {
+				params.SubnetMask = nic.SubnetMask
+			}
+			vmNics = append(vmNics, params)
+		}
+	}
+
+	mountDisks := make([]*models.MountDisksParams, 0)
+	mountNewCreateDisks := make([]*models.MountNewCreateDisksParams, 0)
+	for _, disk := range disks {
+		boot := int32(disk.Boot)
+		if disk.VmVolumeId != "" {
+			params := &models.MountDisksParams{
+				Boot:       &boot,
+				Bus:        &disk.Bus,
+				VMVolumeID: &disk.VmVolumeId,
+				// Index:      &boot,
+			}
+			mountDisks = append(mountDisks, params)
+		} else if disk.VmVolume != nil && len(disk.VmVolume) == 1 {
+			volume := disk.VmVolume[0]
+			params := &models.MountNewCreateDisksParams{
+				Boot: &boot,
+				Bus:  &disk.Bus,
+				VMVolume: &models.MountNewCreateDisksParamsVMVolume{
+					ElfStoragePolicy: &volume.StoragePolicy,
+					Name:             &volume.Name,
+					Size:             &volume.Size,
+				},
+				// Index: &boot,
+			}
+			if volume.OriginPath != "" {
+				params.VMVolume.Path = &volume.OriginPath
+			}
+			mountNewCreateDisks = append(mountNewCreateDisks, params)
+		}
+	}
+	return &VmCreateCommon{
+		basic:               basic,
+		clusterId:           clusterId,
+		firmware:            firmware,
+		status:              status,
+		guestOsType:         guestOsType,
+		cdRoms:              cdRoms,
+		mountDisks:          mountDisks,
+		mountNewCreateDisks: mountNewCreateDisks,
+		vmNics:              vmNics,
+	}, nil
+}
+
+func rebuildVmFromSnapshot(rebuildFrom string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
+	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	rp := vm.NewRebuildVMParams()
+	vmDisks, diags := readVmDisksFromSnapshot(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	var indexPathMap = make(map[string]int32)
+	for i, nfd := range vmDisks {
+		indexPathMap[*nfd.Path] = int32(i)
+	}
+	for _, mncdp := range common.mountNewCreateDisks {
+		// if the path is from an existed volumn, set its index
+		if mncdp.VMVolume.Path != nil {
+			if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+				mncdp.Index = &index
+			}
+		}
+
+	}
+	var diskParams *models.VMDiskParams = nil
+	if len(common.cdRoms)+len(common.mountNewCreateDisks)+len(common.mountDisks) > 0 {
+		diskParams = &models.VMDiskParams{
+			MountCdRoms:         common.cdRoms,
+			MountDisks:          common.mountDisks,
+			MountNewCreateDisks: common.mountNewCreateDisks,
+		}
+	}
+	rp.RequestBody = []*models.VMRebuildParams{
+		{
+			Name:                  &common.basic.Name,
+			ClusterID:             common.clusterId,
+			Vcpu:                  common.basic.Vcpu,
+			Memory:                common.basic.Memory,
+			Ha:                    common.basic.Ha,
+			Firmware:              common.firmware,
+			Status:                common.status.Status,
+			HostID:                common.basic.HostId,
+			FolderID:              common.basic.FolderId,
+			Description:           common.basic.Description,
+			GuestOsType:           common.guestOsType,
+			CPUCores:              common.basic.CpuCores,
+			CPUSockets:            common.basic.CpuSockets,
+			VMDisks:               diskParams,
+			VMNics:                common.vmNics,
+			RebuildFromSnapshotID: &rebuildFrom,
+		},
+	}
+	response, err := ct.Api.VM.RebuildVM(rp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+
+	return response.Payload, nil
+}
+
+func cloneVmFromSourceVm(cloneFrom string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
+	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	cp := vm.NewCloneVMParams()
+	vmDisks, vmVolumes, diags := readVmDisks(ctx, d, ct)
+	var pathVolumeMap = make(map[string]*models.VMVolume)
+	for _, v := range vmVolumes {
+		pathVolumeMap[*v.Path] = v
+	}
+	if diags != nil {
+		return nil, diags
+	}
+	var indexVolumeIdMap = make(map[string]int32)
+	for i, nfd := range vmDisks {
+		if *nfd.Type == models.VMDiskTypeDISK {
+			indexVolumeIdMap[*nfd.VMVolume.ID] = int32(i)
+		}
+	}
+	for _, mncdp := range common.mountNewCreateDisks {
+		// if the path is from an existed volumn, set its index
+		if mncdp.VMVolume.Path != nil {
+			if volume, ok := pathVolumeMap[*mncdp.VMVolume.Path]; ok {
+				if index, ok := indexVolumeIdMap[*volume.ID]; ok {
+					mncdp.Index = &index
+				}
+			}
+		}
+
+	}
+	var diskParams *models.VMDiskParams = nil
+	if len(common.cdRoms)+len(common.mountDisks)+len(common.mountNewCreateDisks) > 0 {
+		diskParams = &models.VMDiskParams{
+			MountCdRoms:         common.cdRoms,
+			MountDisks:          common.mountDisks,
+			MountNewCreateDisks: common.mountNewCreateDisks,
+		}
+	}
+	cp.RequestBody = []*models.VMCloneParams{
+		{
+			Name:        &common.basic.Name,
+			ClusterID:   common.clusterId,
+			Vcpu:        common.basic.Vcpu,
+			Memory:      common.basic.Memory,
+			Ha:          common.basic.Ha,
+			Firmware:    common.firmware,
+			Status:      common.status.Status,
+			HostID:      common.basic.HostId,
+			FolderID:    common.basic.FolderId,
+			Description: common.basic.Description,
+			GuestOsType: common.guestOsType,
+			CPUCores:    common.basic.CpuCores,
+			CPUSockets:  common.basic.CpuSockets,
+			VMDisks:     diskParams,
+			VMNics:      common.vmNics,
+			SrcVMID:     &cloneFrom,
+		},
+	}
+	response, err := ct.Api.VM.CloneVM(cp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return response.Payload, nil
+}
+
+func cloneVmFromVmTemplate(cloneFromTemplate string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
+	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
+	if !ok {
+		return nil, diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
+	}
+	isFullCopy := isFullCopyRes.(bool)
+	cvft := vm.NewCreateVMFromTemplateParams()
+	cloudInit, err := expandCloudInitConfig(d)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	var diskParams *models.VMDiskParams = nil
+	removeIndex := make([]int32, 0)
+	if len(common.cdRoms)+len(common.mountDisks)+len(common.mountNewCreateDisks) > 0 {
+		vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
+		if diags != nil {
+			return nil, diags
+		}
+		var indexPathMap = make(map[string]int32)
+		for i, nfd := range vmDisks {
+			indexPathMap[*nfd.Path] = int32(i)
+		}
+		for _, mncdp := range common.mountNewCreateDisks {
+			// if the path is from an existed volumn, set its index
+			if mncdp.VMVolume.Path != nil {
+				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+					mncdp.Index = &index
+				}
+			}
+		}
+		for idx := range vmDisks {
+			removeIndex = append(removeIndex, int32(idx))
+		}
+		diskParams = &models.VMDiskParams{
+			MountCdRoms:         common.cdRoms,
+			MountDisks:          common.mountDisks,
+			MountNewCreateDisks: common.mountNewCreateDisks,
+		}
+	}
+	cvft.RequestBody = []*models.VMCreateVMFromTemplateParams{
+		{
+			IsFullCopy:  &isFullCopy,
+			Status:      common.status.Status,
+			Name:        &common.basic.Name,
+			ClusterID:   common.clusterId,
+			HostID:      common.basic.HostId,
+			Description: common.basic.Description,
+			Vcpu:        common.basic.Vcpu,
+			FolderID:    common.basic.FolderId,
+			GuestOsType: common.guestOsType,
+			Memory:      common.basic.Memory,
+			CPUCores:    common.basic.CpuCores,
+			CPUSockets:  common.basic.CpuSockets,
+			Ha:          common.basic.Ha,
+			Firmware:    common.firmware,
+			TemplateID:  &cloneFromTemplate,
+			VMNics:      common.vmNics,
+			CloudInit:   cloudInit,
+			DiskOperate: &models.VMDiskOperate{
+				NewDisks: diskParams,
+				RemoveDisks: &models.VMDiskOperateRemoveDisks{
+					DiskIndex: removeIndex,
+				},
+			},
+		},
+	}
+	response, err := ct.Api.VM.CreateVMFromTemplate(cvft)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return response.Payload, nil
+}
+
+func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
+	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
+	if !ok {
+		return nil, diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
+	}
+	isFullCopy := isFullCopyRes.(bool)
+	cvft := vm.NewCreateVMFromContentLibraryTemplateParams()
+	cloudInit, err := expandCloudInitConfig(d)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	var diskParams *models.VMDiskParams = nil
+	removeIndex := make([]int32, 0)
+	if len(common.cdRoms)+len(common.mountDisks)+len(common.mountNewCreateDisks) > 0 {
+		vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
+		if diags != nil {
+			return nil, diags
+		}
+		var indexPathMap = make(map[string]int32)
+		for i, nfd := range vmDisks {
+			indexPathMap[*nfd.Path] = int32(i)
+		}
+		for _, mncdp := range common.mountNewCreateDisks {
+			// if the path is from an existed volumn, set its index
+			if mncdp.VMVolume.Path != nil {
+				if index, ok := indexPathMap[*mncdp.VMVolume.Path]; ok {
+					mncdp.Index = &index
+				}
+			}
+		}
+		for idx := range vmDisks {
+			removeIndex = append(removeIndex, int32(idx))
+		}
+		diskParams = &models.VMDiskParams{
+			MountCdRoms:         common.cdRoms,
+			MountDisks:          common.mountDisks,
+			MountNewCreateDisks: common.mountNewCreateDisks,
+		}
+	}
+	cvft.RequestBody = []*models.VMCreateVMFromContentLibraryTemplateParams{
+		{
+			IsFullCopy:  &isFullCopy,
+			Status:      common.status.Status,
+			Name:        &common.basic.Name,
+			ClusterID:   common.clusterId,
+			HostID:      common.basic.HostId,
+			Description: common.basic.Description,
+			Vcpu:        common.basic.Vcpu,
+			FolderID:    common.basic.FolderId,
+			GuestOsType: common.guestOsType,
+			Memory:      common.basic.Memory,
+			CPUCores:    common.basic.CpuCores,
+			CPUSockets:  common.basic.CpuSockets,
+			Ha:          common.basic.Ha,
+			Firmware:    common.firmware,
+			TemplateID:  &cloneFromContentLibraryTemplate,
+			VMNics:      common.vmNics,
+			CloudInit:   cloudInit,
+			DiskOperate: &models.VMDiskOperate{
+				NewDisks: diskParams,
+				RemoveDisks: &models.VMDiskOperateRemoveDisks{
+					DiskIndex: removeIndex,
+				},
+			},
+		},
+	}
+	response, err := ct.Api.VM.CreateVMFromContentLibraryTemplate(cvft)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return response.Payload, nil
+}
+
+func createBlankVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
+	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	if diags != nil {
+		return nil, diags
+	}
+	cvp := vm.NewCreateVMParams()
+	// check status
+	missingFields := make([]string, 0)
+	if common.basic.Vcpu == nil {
+		missingFields = append(missingFields, "vcpu")
+	}
+	if common.basic.Ha == nil {
+		missingFields = append(missingFields, "ha")
+	}
+	if common.basic.Memory == nil {
+		missingFields = append(missingFields, "memory")
+	}
+	if common.clusterId == nil {
+		missingFields = append(missingFields, "cluster_id")
+	}
+	if common.status.Status == nil {
+		missingFields = append(missingFields, "status")
+	}
+	if common.firmware == nil {
+		missingFields = append(missingFields, "firmware")
+	}
+	if len(missingFields) > 0 {
+		return nil, diag.Errorf("Simple create vm need more config, missing fields: %v", missingFields)
+	}
+	if common.basic.CpuCores == nil {
+		var core int32 = 1
+		common.basic.CpuCores = &core
+	}
+	if common.basic.CpuSockets == nil {
+		socket := *common.basic.Vcpu / *common.basic.CpuCores
+		common.basic.CpuSockets = &socket
+	}
+	cvp.RequestBody = []*models.VMCreationParams{{
+		Name:        &common.basic.Name,
+		ClusterID:   common.clusterId,
+		Vcpu:        common.basic.Vcpu,
+		Memory:      common.basic.Memory,
+		Ha:          common.basic.Ha,
+		Firmware:    common.firmware,
+		Status:      common.status.Status,
+		HostID:      common.basic.HostId,
+		FolderID:    common.basic.FolderId,
+		Description: common.basic.Description,
+		GuestOsType: common.guestOsType,
+		CPUCores:    common.basic.CpuCores,
+		CPUSockets:  common.basic.CpuSockets,
+		VMDisks: &models.VMDiskParams{
+			MountCdRoms:         common.cdRoms,
+			MountDisks:          common.mountDisks,
+			MountNewCreateDisks: common.mountNewCreateDisks,
+		},
+		VMNics: common.vmNics,
+	}}
+	response, err := ct.Api.VM.CreateVM(cvp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return response.Payload, nil
 }
