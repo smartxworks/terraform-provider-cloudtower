@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"github.com/hasura/go-graphql-client"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/content_library_vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_disk"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm_nic"
@@ -1656,6 +1657,35 @@ func readVmDisksFromTemplate(ctx context.Context, d *schema.ResourceData, ct *cl
 	return vmTemplates.Payload[0].VMDisks, nil
 }
 
+func readVmDisksFromContentLibraryTemplate(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.NestedFrozenDisks, diag.Diagnostics) {
+	cloneFromTemplate := d.Get("create_effect.0.clone_from_content_library_template").(string)
+	gcp := content_library_vm_template.NewGetContentLibraryVMTemplatesParams()
+	gcp.RequestBody = &models.GetContentLibraryVMTemplatesRequestBody{
+		Where: &models.ContentLibraryVMTemplateWhereInput{
+			ID: &cloneFromTemplate,
+		},
+	}
+	contentLibraryVmTemplates, err := ct.Api.ContentLibraryVMTemplate.GetContentLibraryVMTemplates(gcp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	} else if len(contentLibraryVmTemplates.Payload) == 0 {
+		return nil, diag.FromErr(fmt.Errorf("content library template %s not found", cloneFromTemplate))
+	}
+	gp := vm_template.NewGetVMTemplatesParams()
+	gp.RequestBody = &models.GetVMTemplatesRequestBody{
+		Where: &models.VMTemplateWhereInput{
+			ID: contentLibraryVmTemplates.Payload[0].VMTemplates[0].ID,
+		},
+	}
+	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	} else if len(vmTemplates.Payload) == 0 {
+		return nil, diag.FromErr(fmt.Errorf("template %s not found", cloneFromTemplate))
+	}
+	return vmTemplates.Payload[0].VMDisks, nil
+}
+
 func readVmDisksFromSnapshot(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.NestedFrozenDisks, diag.Diagnostics) {
 	cloneFromTemplate := d.Get("create_effect.0.rebuild_from_snapshot").(string)
 	gp := vm_snapshot.NewGetVMSnapshotsParams()
@@ -2093,7 +2123,7 @@ func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string,
 	var diskParams *models.VMDiskParams = nil
 	removeIndex := make([]int32, 0)
 	if len(common.cdRoms)+len(common.mountDisks)+len(common.mountNewCreateDisks) > 0 {
-		vmDisks, diags := readVmDisksFromTemplate(ctx, d, ct)
+		vmDisks, diags := readVmDisksFromContentLibraryTemplate(ctx, d, ct)
 		if diags != nil {
 			return nil, diags
 		}
