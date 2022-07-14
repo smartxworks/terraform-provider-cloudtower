@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/elf_image"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
@@ -21,9 +22,19 @@ func dataSourceIso() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter ISOs by name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "filter ISOs by name",
+			},
+			"name_in": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"name"},
+				Description:   "filter iso by name as an array",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -31,9 +42,19 @@ func dataSourceIso() *schema.Resource {
 				Description: "filter ISOs by name contain a certain string",
 			},
 			"cluster_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter ISOs by cluster id",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cluster_id_in"},
+				Description:   "filter ISOs by cluster id",
+			},
+			"cluster_id_in": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"cluster_id"},
+				Description:   "filter iso by cluster id as an array",
 			},
 			"isos": {
 				Type:        schema.TypeList,
@@ -100,10 +121,27 @@ func expandIsoWhereInput(d *schema.ResourceData) (*models.ElfImageWhereInput, er
 	}
 	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		where.NameContains = &nameContains
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(nameIn) > 0 {
+			where.NameIn = nameIn
+		}
 	}
+
 	if clusterId := d.Get("cluster_id").(string); clusterId != "" {
 		where.Cluster = &models.ClusterWhereInput{
 			ID: &clusterId,
+		}
+	} else {
+		clusterIdIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("cluster_id_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(clusterIdIn) > 0 {
+			where.Cluster = &models.ClusterWhereInput{
+				IDIn: clusterIdIn,
+			}
 		}
 	}
 	return where, nil

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/datacenter"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
@@ -21,9 +22,19 @@ func dataSourceDatacenter() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter datacenters by name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "filter datacenters by name",
+			},
+			"name_in": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"name"},
+				Description:   "filter datacenters by name as an array",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -58,17 +69,25 @@ func dataSourceDatacenterRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	ct := meta.(*cloudtower.Client)
 
-	gdp := datacenter.NewGetDatacentersParams()
-	gdp.RequestBody = &models.GetDatacentersRequestBody{
+	gp := datacenter.NewGetDatacentersParams()
+	gp.RequestBody = &models.GetDatacentersRequestBody{
 		Where: &models.DatacenterWhereInput{},
 	}
 	if name := d.Get("name").(string); name != "" {
-		gdp.RequestBody.Where.Name = &name
+		gp.RequestBody.Where.Name = &name
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else if len(nameIn) > 0 {
+			gp.RequestBody.Where.NameIn = nameIn
+		}
 	}
 	if nameContains := d.Get("name_contains").(string); nameContains != "" {
-		gdp.RequestBody.Where.NameContains = &nameContains
+		gp.RequestBody.Where.NameContains = &nameContains
 	}
-	datacenters, err := ct.Api.Datacenter.GetDatacenters(gdp)
+
+	datacenters, err := ct.Api.Datacenter.GetDatacenters(gp)
 	if err != nil {
 		return diag.FromErr(err)
 	}

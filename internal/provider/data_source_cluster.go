@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/cluster"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
@@ -24,6 +25,12 @@ func dataSourceCluster() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "filter clusters by name",
+			},
+			"name_in": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "filter clusters by name as an array",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -64,10 +71,18 @@ func dataSourceClusterRead(ctx context.Context, d *schema.ResourceData, meta int
 	}
 	if name := d.Get("name").(string); name != "" {
 		gp.RequestBody.Where.Name = &name
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else if len(nameIn) > 0 {
+			gp.RequestBody.Where.NameIn = nameIn
+		}
 	}
 	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
+
 	clusters, err := ct.Api.Cluster.GetClusters(gp)
 	if err != nil {
 		return diag.FromErr(err)

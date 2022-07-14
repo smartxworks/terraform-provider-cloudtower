@@ -22,9 +22,17 @@ func dataSourceVmTemplate() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "vm template's name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "filter vm template by its name",
+			},
+			"name_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Elem:          &schema.Schema{Type: schema.TypeString},
+				ConflictsWith: []string{"name"},
+				Description:   "filter vm template by its name as an array",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -32,9 +40,17 @@ func dataSourceVmTemplate() *schema.Resource {
 				Description: "filter vm template by its name contains characters",
 			},
 			"cluster_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "cluster's id of the template",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cluster_id_in"},
+				Description:   "filter vm template by cluster's id of the template",
+			},
+			"cluster_id_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Elem:          &schema.Schema{Type: schema.TypeString},
+				ConflictsWith: []string{"cluster_id"},
+				Description:   "filter vm template by cluster's id of the template as an array",
 			},
 			"vm_templates": {
 				Type:        schema.TypeList,
@@ -175,12 +191,29 @@ func dataSourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta 
 	}
 	if name := d.Get("name").(string); name != "" {
 		gp.RequestBody.Where.Name = &name
-	} else if nameContains := d.Get("name_contains").(string); nameContains != "" {
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else if len(nameIn) > 0 {
+			gp.RequestBody.Where.NameIn = nameIn
+		}
+	}
+	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
 	if cluster_id := d.Get("cluster_id").(string); cluster_id != "" {
 		gp.RequestBody.Where.Cluster = &models.ClusterWhereInput{
 			ID: &cluster_id,
+		}
+	} else {
+		clusterIdIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("cluster_id_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else if len(clusterIdIn) > 0 {
+			gp.RequestBody.Where.Cluster = &models.ClusterWhereInput{
+				IDIn: clusterIdIn,
+			}
 		}
 	}
 	vm_templates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
