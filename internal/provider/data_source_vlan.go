@@ -8,12 +8,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vds"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vlan"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	local_validation "github.com/hashicorp/terraform-provider-cloudtower/internal/validation"
 )
 
 func dataSourceVlan() *schema.Resource {
@@ -54,7 +54,7 @@ func dataSourceVlan() *schema.Resource {
 				Description:   "filter vlans by type as array",
 				Elem:          &schema.Schema{Type: schema.TypeString},
 				ConflictsWith: []string{"type"},
-				ValidateFunc:  local_validation.ListStringInSlice([]string{"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"}, false),
+				// ValidateFunc:  local_validation.ListStringInSlice([]string{"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"}, false),
 			},
 			"cluster_id": {
 				Type:          schema.TypeString,
@@ -90,6 +90,11 @@ func dataSourceVlan() *schema.Resource {
 							Computed:    true,
 							Description: "vlan's type",
 						},
+						"cluster_id": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "vlan's cluster id",
+						},
 					},
 				},
 			},
@@ -112,22 +117,45 @@ func dataSourceVlanRead(ctx context.Context, d *schema.ResourceData, meta interf
 	}
 	gp.RequestBody.Where = where
 	vlans, err := ct.Api.Vlan.GetVlans(gp)
+
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	output := make([]map[string]interface{}, 0)
+	vdsVlanMap := make(map[string][]*models.Vlan, 0)
+	vdsIdList := make([]string, 0)
 	for _, d := range vlans.Payload {
-		output = append(output, map[string]interface{}{
-			"id":   d.ID,
-			"name": d.Name,
-			"type": d.Type,
-		})
+		vdsIdList = append(vdsIdList, *d.Vds.ID)
+		if _, ok := vdsVlanMap[*d.Vds.ID]; !ok {
+			vdsVlanMap[*d.Vds.ID] = make([]*models.Vlan, 0)
+		}
+		vdsVlanMap[*d.Vds.ID] = append(vdsVlanMap[*d.Vds.ID], d)
+	}
+
+	getVdsParams := vds.NewGetVdsesParams()
+	getVdsParams.RequestBody = &models.GetVdsesRequestBody{
+		Where: &models.VdsWhereInput{
+			IDIn: vdsIdList,
+		},
+	}
+	vdses, err := ct.Api.Vds.GetVdses(getVdsParams)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	for _, vds := range vdses.Payload {
+		for _, vlan := range vdsVlanMap[*vds.ID] {
+			output = append(output, map[string]interface{}{
+				"id":         vlan.ID,
+				"name":       vlan.Name,
+				"type":       vlan.Type,
+				"cluster_id": vds.Cluster.ID,
+			})
+		}
 	}
 	err = d.Set("vlans", output)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
 	d.SetId(strconv.FormatInt(time.Now().Unix(), 10))
 
 	return diags
