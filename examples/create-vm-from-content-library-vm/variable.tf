@@ -1,16 +1,16 @@
 variable "config" {
   type = object({
     tower_server    = string,
-    cluster         = string,
-    host            = string,
-    portroup        = string,
-    default_gateway = string,
     template_name   = string,
+    cluster         = list(string),
+    host            = list(string),
+    portgroup       = list(string),
+    default_gateway = list(string),
     host_name       = list(string),
     vm_name         = list(string),
     memory          = list(number),
     vcpu            = list(number),
-    cidr            = number,
+    cidr            = list(string),
     vm_ip           = list(string),
     dns             = list(list(string)),
     extra_disks = list(list(object({
