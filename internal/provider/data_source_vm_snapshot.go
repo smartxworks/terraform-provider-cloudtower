@@ -22,9 +22,19 @@ func dataSourceVmSnapshot() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "vm snapshot's name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "vm snapshot's name",
+			},
+			"name_in": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"name"},
+				Description:   "vm snapshot's name as an array",
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -32,9 +42,19 @@ func dataSourceVmSnapshot() *schema.Resource {
 				Description: "filter vm snapshot by its name contains characters",
 			},
 			"vm_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "vm's id of the snapshot",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"vm_id_in"},
+				Description:   "vm's id of the snapshot",
+			},
+			"vm_id_in": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"vm_id"},
+				Description:   "vm's id of the snapshot as an array",
 			},
 			"vm_snapshots": {
 				Type:        schema.TypeList,
@@ -175,11 +195,26 @@ func dataSourceVmSnapshotRead(ctx context.Context, d *schema.ResourceData, meta 
 	}
 	if name := d.Get("name").(string); name != "" {
 		gp.RequestBody.Where.Name = &name
-	} else if nameContains := d.Get("name_contains").(string); nameContains != "" {
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else {
+			gp.RequestBody.Where.NameIn = nameIn
+		}
+	}
+	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
-	if vm_id := d.Get("vm_id").(string); vm_id != "" {
-		gp.RequestBody.Where.VM.ID = &vm_id
+	if vmId := d.Get("vm_id").(string); vmId != "" {
+		gp.RequestBody.Where.VM.ID = &vmId
+	} else {
+		vmIdIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("vm_id_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else {
+			gp.RequestBody.Where.VM.IDIn = vmIdIn
+		}
 	}
 	snapshots, err := ct.Api.VMSnapshot.GetVMSnapshots(gp)
 	if err != nil {

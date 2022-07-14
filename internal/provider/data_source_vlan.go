@@ -7,11 +7,13 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vlan"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	local_validation "github.com/hashicorp/terraform-provider-cloudtower/internal/validation"
 )
 
 func dataSourceVlan() *schema.Resource {
@@ -22,9 +24,17 @@ func dataSourceVlan() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter vlans by name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "filter vlans by name",
+			},
+			"name_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter vlans by name",
+				ConflictsWith: []string{"name"},
+				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -32,15 +42,32 @@ func dataSourceVlan() *schema.Resource {
 				Description: "filter vlans by name contain a certain string",
 			},
 			"type": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Description:  "filter vlans by type",
-				ValidateFunc: validation.StringInSlice([]string{"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"}, false),
+				Type:          schema.TypeString,
+				Optional:      true,
+				Description:   "filter vlans by type",
+				ConflictsWith: []string{"type_in"},
+				ValidateFunc:  validation.StringInSlice([]string{"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"}, false),
+			},
+			"type_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter vlans by type as array",
+				Elem:          &schema.Schema{Type: schema.TypeString},
+				ConflictsWith: []string{"type"},
+				ValidateFunc:  local_validation.ListStringInSlice([]string{"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"}, false),
 			},
 			"cluster_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter vlans by cluster id",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cluster_id_in"},
+				Description:   "filter vlans by cluster id",
+			},
+			"cluster_id_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter vlans by cluster id as array",
+				ConflictsWith: []string{"cluster_id"},
+				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"vlans": {
 				Type:        schema.TypeList,
@@ -110,6 +137,13 @@ func expandVlanWhereInput(d *schema.ResourceData) (*models.VlanWhereInput, error
 	where := &models.VlanWhereInput{}
 	if name := d.Get("name").(string); name != "" {
 		where.Name = &name
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(nameIn) > 0 {
+			where.NameIn = nameIn
+		}
 	}
 	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		where.NameContains = &nameContains
@@ -132,12 +166,46 @@ func expandVlanWhereInput(d *schema.ResourceData) (*models.VlanWhereInput, error
 			pt := models.NetworkTypeVM
 			where.Type = &pt
 		}
+	} else {
+		rawTypeIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("type_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(rawTypeIn) > 0 {
+			typeIn := make([]models.NetworkType, len(rawTypeIn))
+			for _, t := range rawTypeIn {
+				switch t {
+				case "ACCESS":
+					typeIn = append(typeIn, models.NetworkTypeACCESS)
+				case "MANAGEMENT":
+					typeIn = append(typeIn, models.NetworkTypeMANAGEMENT)
+				case "MIGRATION":
+					typeIn = append(typeIn, models.NetworkTypeMIGRATION)
+				case "STORAGE":
+					typeIn = append(typeIn, models.NetworkTypeSTORAGE)
+				case "VM":
+					typeIn = append(typeIn, models.NetworkTypeVM)
+				}
+			}
+			where.TypeIn = typeIn
+		}
 	}
+
 	if clusterId := d.Get("cluster_id").(string); clusterId != "" {
 		where.Vds = &models.VdsWhereInput{
 			Cluster: &models.ClusterWhereInput{
 				ID: &clusterId,
 			},
+		}
+	} else {
+		clusterIdIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("cluster_id_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(clusterIdIn) > 0 {
+			where.Vds = &models.VdsWhereInput{
+				Cluster: &models.ClusterWhereInput{
+					IDIn: clusterIdIn,
+				},
+			}
 		}
 	}
 	return where, nil

@@ -25,9 +25,17 @@ func dataSourceContentLibraryVmTemplate() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "content library vm template's name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "content library vm template's name",
+			},
+			"name_in": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name"},
+				Description:   "content library vm template's name as an array",
+				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -174,9 +182,19 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 	}
 	if name := d.Get("name").(string); name != "" {
 		gp.RequestBody.Where.Name = &name
-	} else if nameContains := d.Get("name_contains").(string); nameContains != "" {
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return diag.FromErr(err)
+		} else if len(nameIn) > 0 {
+			gp.RequestBody.Where.NameIn = nameIn
+		}
+	}
+
+	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
+
 	raw_cluster_id, ok := d.GetOk("cluster_id")
 	if ok {
 		bytes, err := json.Marshal(raw_cluster_id)
