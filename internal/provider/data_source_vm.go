@@ -13,7 +13,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	local_validation "github.com/hashicorp/terraform-provider-cloudtower/internal/validation"
 )
 
 func dataSourceVm() *schema.Resource {
@@ -54,7 +53,7 @@ func dataSourceVm() *schema.Resource {
 				Optional:      true,
 				Description:   "filter VMs by status in an array",
 				ConflictsWith: []string{"status"},
-				ValidateFunc:  local_validation.ListStringInSlice([]string{"RUNNING", "STOPPED", "SUSPENDED"}, false),
+				// ValidateFunc:  local_validation.ListStringInSlice([]string{"RUNNING", "STOPPED", "SUSPENDED"}, false),
 			},
 			"cluster_id": {
 				Type:          schema.TypeString,
