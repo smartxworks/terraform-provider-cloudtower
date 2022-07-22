@@ -5,7 +5,7 @@ variable "config" {
     cluster         = list(string),
     host            = list(string),
     portgroup       = list(string),
-    default_gateway = list(string),
+    default_gw = list(string),
     host_name       = list(string),
     vm_name         = list(string),
     memory          = list(number),
@@ -13,12 +13,7 @@ variable "config" {
     cidr            = list(string),
     vm_ip           = list(string),
     dns             = list(list(string)),
-    extra_disks = list(list(object({
-      name           = string,
-      size           = number,
-      bus            = string,
-      storage_policy = string
-    })))
+    extra_disks = list(list(number))
   })
   validation {
     condition     = length(var.config.host_name) == length(var.config.vm_name) && length(var.config.host_name) == length(var.config.memory) && length(var.config.host_name) == length(var.config.vcpu) && length(var.config.host_name) == length(var.config.vm_ip) && length(var.config.host_name) == length(var.config.dns) && length(var.config.host_name) == length(var.config.extra_disks)

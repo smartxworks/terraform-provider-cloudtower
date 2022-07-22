@@ -759,25 +759,26 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diags
 	}
 	var disks []map[string]interface{}
-	for idx, d := range vmDisks {
+	for idx, disk := range vmDisks {
 		vmVolume := vmVolumes[idx]
 		vmVolumeData := map[string]interface{}{
-			"id": d.VMVolume.ID,
+			"id": disk.VMVolume.ID,
 		}
 		if vmVolume != nil {
 			vmVolumeData["name"] = vmVolume.Name
 			vmVolumeData["size"] = vmVolume.Size
 			vmVolumeData["path"] = vmVolume.Path
+			vmVolumeData["origin_path"] = d.Get(fmt.Sprintf("disk.%d.vm_volume.0.origin_path", idx))
 			vmVolumeData["storage_policy"] = vmVolume.ElfStoragePolicy
 		}
 		disks = append(disks, map[string]interface{}{
-			"id":   d.ID,
-			"boot": d.Boot,
-			"bus":  d.Bus,
+			"id":   disk.ID,
+			"boot": disk.Boot,
+			"bus":  disk.Bus,
 			"vm_volume": []map[string]interface{}{
 				vmVolumeData,
 			},
-			"vm_volume_id": d.VMVolume.ID,
+			"vm_volume_id": disk.VMVolume.ID,
 		})
 	}
 	if err := d.Set("disk", disks); err != nil {
