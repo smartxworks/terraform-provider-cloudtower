@@ -15,7 +15,7 @@ locals {
 
 provider "cloudtower" {
   username          = "root"
-  password          = "HC!r0cks"
+  password          = "111111"
   user_source       = "LOCAL"
   cloudtower_server = var.config["tower_server"]
 }
@@ -62,18 +62,17 @@ locals {
   }
 }
 
-output "cluster_name_map" {
-  value = local.vlan_name_map
-}
+# output "cluster_name_map" {
+#   value = local.vlan_name_map
+# }
 
-output "host_ip_map" {
-  value = local.host_ip_map
-}
+# output "host_ip_map" {
+#   value = local.host_ip_map
+# }
 
-output "vlan_name_map" {
-  value = local.vlan_name_map
-}
-
+# output "vlan_name_map" {
+#   value = local.vlan_name_map
+# }
 
 resource "cloudtower_vm" "vms_create_from_template" {
   count      = length(var.config["vm_ip"])
@@ -95,7 +94,7 @@ resource "cloudtower_vm" "vms_create_from_template" {
         ip_address = var.config["vm_ip"][count.index]
         netmask    = cidrnetmask("${var.config["vm_ip"][count.index]}/${var.config["cidr"][count.index]}")
         routes {
-          gateway = var.config["default_gateway"][count.index]
+          gateway = var.config["default_gw"][count.index]
           netmask = "0.0.0.0"
           network = "0.0.0.0"
         }
@@ -119,13 +118,18 @@ resource "cloudtower_vm" "vms_create_from_template" {
     for_each = var.config["extra_disks"][count.index]
     content {
       boot = length(data.cloudtower_content_library_vm_template.query_templates.content_library_vm_templates[0].vm_templates[0].disks) + disk.key
-      bus  = disk.value.bus
+      bus  = "VIRTIO"
       vm_volume {
-        storage_policy = disk.value.storage_policy
-        name           = disk.value.name
-        size           = disk.value.size * local.GB
+        storage_policy = "REPLICA_2_THIN_PROVISION"
+        name           = "${var.config["vm_name"][count.index]}-${length(data.cloudtower_content_library_vm_template.query_templates.content_library_vm_templates[0].vm_templates[0].disks) + disk.key + 1}"
+        size           = disk.value * local.GB
       }
     }
+  }
+
+  cd_rom {
+    boot = length(data.cloudtower_content_library_vm_template.query_templates.content_library_vm_templates[0].vm_templates[0].disks) + length(var.config["extra_disks"][count.index]) + 1
+    iso_id = ""
   }
   nic {
     vlan_id = local.vlan_name_map[var.config["portgroup"][count.index]][local.cluster_name_map[var.config["cluster"][count.index]].id].id #data.cloudtower_vlan.query_vlans.vlans[0].id

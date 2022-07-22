@@ -219,11 +219,11 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 	output := make([]map[string]interface{}, 0)
 	var err_channel chan error = make(chan error, len(vm_templates.Payload))
 	for _, d := range vm_templates.Payload {
-		var vm_templates []map[string]interface{} = make([]map[string]interface{}, 0)
+		var vm_templates []map[string]interface{} = make([]map[string]interface{}, len(d.VMTemplates))
 		var wg sync.WaitGroup
-		for _, template := range d.VMTemplates {
+		for ti, template := range d.VMTemplates {
 			wg.Add(1)
-			go func(t *models.NestedVMTemplate) {
+			go func(t *models.NestedVMTemplate, idx int) {
 				defer wg.Done()
 				var disks []map[string]interface{} = make([]map[string]interface{}, 0)
 				var nics []map[string]interface{} = make([]map[string]interface{}, 0)
@@ -270,13 +270,13 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 						"idx":     nic.Index,
 					})
 				}
-				vm_templates = append(vm_templates, map[string]interface{}{
+				vm_templates[idx] = map[string]interface{}{
 					"disks":   disks,
 					"nics":    nics,
 					"id":      rawTemplate.ID,
 					"cluster": rawTemplate.Cluster.ID,
-				})
-			}(template)
+				}
+			}(template, ti)
 		}
 		wg.Wait()
 		close(err_channel)
