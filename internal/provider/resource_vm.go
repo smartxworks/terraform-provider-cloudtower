@@ -1607,6 +1607,7 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 			VM: &models.VMWhereInput{
 				ID: &id,
 			},
+			CloudInitImagePathNot: nil,
 		},
 	}
 	vmDisks, err := ct.Api.VMDisk.GetVMDisks(gp)
@@ -1637,7 +1638,6 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 		vmVolume := vmVolumeMap[*v.VMVolume.ID]
 		vmVolumesSlice[idx] = vmVolume
 	}
-
 	return vmDisks.Payload, vmVolumesSlice, nil
 }
 
