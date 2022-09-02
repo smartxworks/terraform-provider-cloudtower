@@ -1826,6 +1826,7 @@ func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *c
 		if err != nil {
 			return nil, diag.FromErr(err)
 		}
+		vmNics = make([]*models.VMNicParams, len(nics))
 		for i, nic := range nics {
 			params := &models.VMNicParams{
 				ConnectVlanID: &nic.VlanId,
@@ -1859,6 +1860,8 @@ func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *c
 			}
 			vmNics = append(vmNics, params)
 		}
+	} else {
+		vmNics = make([]*models.VMNicParams, 0)
 	}
 
 	mountDisks := make([]*models.MountDisksParams, 0)
