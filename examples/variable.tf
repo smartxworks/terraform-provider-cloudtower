@@ -32,6 +32,14 @@ variable "vm_config" {
       netmask  = string
       gateway  = string
       dns      = list(string)
-    })
+    }),
+    extra_disks = list(
+      object({
+        size           = number
+        name           = string
+        bus            = string
+        storage_policy = string
+      })
+    )
   }))
 }

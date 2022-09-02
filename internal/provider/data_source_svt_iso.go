@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/svt_image"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
@@ -21,9 +22,17 @@ func dataSourceSvtImage() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter svt ISOs by name",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"name_in"},
+				Description:   "filter svt ISOs by name",
+			},
+			"name_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter svt ISOs by name in",
+				ConflictsWith: []string{"name"},
+				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"name_contains": {
 				Type:        schema.TypeString,
@@ -31,14 +40,30 @@ func dataSourceSvtImage() *schema.Resource {
 				Description: "filter svt ISOs by name contain a certain string",
 			},
 			"cluster_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "filter svt ISOs by cluster id",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cluster_id_in"},
+				Description:   "filter svt ISOs by cluster id",
+			},
+			"cluster_id_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter svt ISOs by cluster id in",
+				ConflictsWith: []string{"cluster_id"},
+				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"version": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				Description: "filter svt ISOs by version",
+				Type:          schema.TypeInt,
+				Optional:      true,
+				ConflictsWith: []string{"version_in"},
+				Description:   "filter svt ISOs by version",
+			},
+			"version_in": {
+				Type:          schema.TypeList,
+				Optional:      true,
+				Description:   "filter svt ISOs by version in",
+				ConflictsWith: []string{"version"},
+				Elem:          &schema.Schema{Type: schema.TypeInt},
 			},
 			"version_gte": {
 				Type:        schema.TypeInt,
@@ -113,13 +138,33 @@ func expandSvtImageWhereInput(d *schema.ResourceData) (*models.SvtImageWhereInpu
 	where := &models.SvtImageWhereInput{}
 	if name := d.Get("name").(string); name != "" {
 		where.Name = &name
-	} else if nameContains := d.Get("name_contains").(string); nameContains != "" {
+	} else {
+		nameIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("name_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(nameIn) > 0 {
+			where.NameIn = nameIn
+		}
+	}
+	if nameContains := d.Get("name_contains").(string); nameContains != "" {
 		where.NameContains = &nameContains
 	}
 	if version, ok := d.GetOkExists("version"); ok {
 		version := int32(version.(int))
 		where.Version = &version
-	} else if versionGte, ok := d.GetOkExists("version_gte"); ok {
+	} else {
+		rawVersionIn, err := helper.SliceInterfacesToTypeSlice[int](d.Get("version_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(rawVersionIn) > 0 {
+			versionIn := make([]int32, len(rawVersionIn))
+			for i, v := range rawVersionIn {
+				versionIn[i] = int32(v)
+			}
+			where.VersionIn = versionIn
+		}
+	}
+	if versionGte, ok := d.GetOkExists("version_gte"); ok {
 		versionGte := int32(versionGte.(int))
 		where.VersionGte = &versionGte
 	}
@@ -127,6 +172,16 @@ func expandSvtImageWhereInput(d *schema.ResourceData) (*models.SvtImageWhereInpu
 		where.Cluster = &models.ClusterWhereInput{
 			ID: &clusterId,
 		}
+	} else {
+		clusterIdIn, err := helper.SliceInterfacesToTypeSlice[string](d.Get("cluster_id_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(clusterIdIn) > 0 {
+			where.Cluster = &models.ClusterWhereInput{
+				IDIn: clusterIdIn,
+			}
+		}
 	}
+
 	return where, nil
 }
