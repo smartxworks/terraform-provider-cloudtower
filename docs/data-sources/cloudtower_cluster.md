@@ -19,6 +19,7 @@ CloudTower cluster data source.
 
 - `name` (String) filter clusters by name
 - `name_contains` (String) filter clusters by name contain a certain string
+- `name_in` (List of String) filter clusters by name as an array
 
 ### Read-Only
 

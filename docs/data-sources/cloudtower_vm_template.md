@@ -17,9 +17,11 @@ CloudTower vm template data source.
 
 ### Optional
 
-- `cluster_id` (String) cluster's id of the template
-- `name` (String) vm template's name
+- `cluster_id` (String) filter vm template by cluster's id of the template
+- `cluster_id_in` (List of String) filter vm template by cluster's id of the template as an array
+- `name` (String) filter vm template by its name
 - `name_contains` (String) filter vm template by its name contains characters
+- `name_in` (List of String) filter vm template by its name as an array
 
 ### Read-Only
 

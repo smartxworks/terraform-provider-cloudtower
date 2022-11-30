@@ -128,7 +128,7 @@ resource "cloudtower_vm" "vms_create_from_template" {
   }
 
   cd_rom {
-    boot = length(data.cloudtower_content_library_vm_template.query_templates.content_library_vm_templates[0].vm_templates[0].disks) + length(var.config["extra_disks"][count.index]) + 1
+    boot   = length(data.cloudtower_content_library_vm_template.query_templates.content_library_vm_templates[0].vm_templates[0].disks) + length(var.config["extra_disks"][count.index]) + 1
     iso_id = ""
   }
   nic {

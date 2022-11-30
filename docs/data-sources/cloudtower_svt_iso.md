@@ -18,10 +18,13 @@ CloudTower vmtools iso data source.
 ### Optional
 
 - `cluster_id` (String) filter svt ISOs by cluster id
+- `cluster_id_in` (List of String) filter svt ISOs by cluster id in
 - `name` (String) filter svt ISOs by name
 - `name_contains` (String) filter svt ISOs by name contain a certain string
+- `name_in` (List of String) filter svt ISOs by name in
 - `version` (Number) filter svt ISOs by version
 - `version_gte` (Number) filter svt ISOs by version greater than or equal to
+- `version_in` (List of Number) filter svt ISOs by version in
 
 ### Read-Only
 

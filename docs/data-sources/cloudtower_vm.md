@@ -18,10 +18,14 @@ CloudTower vm data source.
 ### Optional
 
 - `cluster_id` (String) filter VMs by cluster id
+- `cluster_id_in` (List of String) filter VMs by cluster id in an array
 - `host_id` (String) filter VMs by host id
+- `host_id_in` (List of String) filter VMs by host id in an array
 - `name` (String) filter VMs by name
 - `name_contains` (String) filter VMs by name contain a certain string
+- `name_in` (List of String) filter VMs by name in an array
 - `status` (String) filter VMs by status
+- `status_in` (List of String) filter VMs by status in an array
 
 ### Read-Only
 

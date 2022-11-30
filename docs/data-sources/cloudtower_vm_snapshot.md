@@ -19,7 +19,9 @@ CloudTower vm snapshot data source.
 
 - `name` (String) vm snapshot's name
 - `name_contains` (String) filter vm snapshot by its name contains characters
+- `name_in` (List of String) vm snapshot's name as an array
 - `vm_id` (String) vm's id of the snapshot
+- `vm_id_in` (List of String) vm's id of the snapshot as an array
 
 ### Read-Only
 

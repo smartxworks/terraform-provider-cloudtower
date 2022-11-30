@@ -19,6 +19,7 @@ CloudTower datacenter data source.
 
 - `name` (String) filter datacenters by name
 - `name_contains` (String) filter datacenters by name contain a certain string
+- `name_in` (List of String) filter datacenters by name as an array
 
 ### Read-Only
 

@@ -62,6 +62,7 @@ Read-Only:
 
 Optional:
 
+- `clone_from_content_library_template` (String) Id of source content library VM template to be cloned
 - `clone_from_template` (String) Id of source VM template to be cloned
 - `clone_from_vm` (String) Id of source vm from created vm to be cloned from
 - `cloud_init` (Block List, Max: 1) Set up cloud-init config when create vm from template (see [below for nested schema](#nestedblock--create_effect--cloud_init))

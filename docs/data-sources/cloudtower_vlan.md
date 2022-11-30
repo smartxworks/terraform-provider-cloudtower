@@ -18,9 +18,12 @@ CloudTower vlan data source.
 ### Optional
 
 - `cluster_id` (String) filter vlans by cluster id
+- `cluster_id_in` (List of String) filter vlans by cluster id as array
 - `name` (String) filter vlans by name
 - `name_contains` (String) filter vlans by name contain a certain string
+- `name_in` (List of String) filter vlans by name
 - `type` (String) filter vlans by type
+- `type_in` (List of String) filter vlans by type as array
 
 ### Read-Only
 
@@ -32,6 +35,7 @@ CloudTower vlan data source.
 
 Read-Only:
 
+- `cluster_id` (String)
 - `id` (String)
 - `name` (String)
 - `type` (String)

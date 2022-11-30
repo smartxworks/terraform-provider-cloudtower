@@ -18,8 +18,10 @@ CloudTower iso data source.
 ### Optional
 
 - `cluster_id` (String) filter ISOs by cluster id
+- `cluster_id_in` (List of String) filter iso by cluster id as an array
 - `name` (String) filter ISOs by name
 - `name_contains` (String) filter ISOs by name contain a certain string
+- `name_in` (List of String) filter iso by name as an array
 
 ### Read-Only
 

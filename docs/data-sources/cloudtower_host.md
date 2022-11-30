@@ -18,12 +18,16 @@ CloudTower host data source.
 ### Optional
 
 - `cluster_id` (String) filter hosts by cluster id
+- `cluster_id_in` (List of String) filter datacenters by cluster id as an array
 - `data_ip` (String) filter hosts by data IP
 - `data_ip_contains` (String) filter hosts by data IP contain a certain string
+- `data_ip_in` (List of String) filter datacenters by data ip as an array
 - `management_ip` (String) filter hosts by management IP
 - `management_ip_contains` (String) filter hosts by management IP contain a certain string
+- `management_ip_in` (List of String) filter datacenters by management ip as an array
 - `name` (String) filter hosts by name
 - `name_contains` (String) filter hosts by name contain a certain string
+- `name_in` (List of String) filter data source by name as an array
 
 ### Read-Only
 
