@@ -4,12 +4,16 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/cluster"
+	"github.com/smartxworks/cloudtower-go-sdk/v2/client/label"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
+
+var resourceTypeCluster = "cluster"
 
 func resourceCluster() *schema.Resource {
 	return &schema.Resource{
@@ -51,47 +55,119 @@ func resourceCluster() *schema.Resource {
 				Computed:    true,
 				Description: "cluster's name",
 			},
+			"label_id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "cluster's terraform label",
+			},
 		},
 	}
 }
 
 func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	ccp := cluster.NewConnectClusterParams()
 	username := d.Get("username").(string)
 	password := d.Get("password").(string)
 	ip := d.Get("ip").(string)
 	datacenterId := d.Get("datacenter_id").(string)
-	ccp.RequestBody = []*models.ClusterCreationParams{{
-		IP:           &ip,
-		Username:     &username,
-		Password:     &password,
-		DatacenterID: &datacenterId,
-	}}
-	clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
+	// check if cluster is connected
+	gcp := cluster.NewGetClustersParams()
+	gcp.RequestBody = &models.GetClustersRequestBody{
+		Where: &models.ClusterWhereInput{
+			IP: &ip,
+		},
+	}
+	clusters, err := ct.Api.Cluster.GetClusters(gcp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	d.SetId(*clusters.Payload[0].Data.ID)
-	err = waitClusterTasksFinish(ct, clusters.Payload)
+	var labelId string
+	if len(clusters.Payload) > 0 {
+		// check uniqueness by label
+		labels, err := helper.GetUniquenessLabel(ct.Api, resourceTypeCluster, *clusters.Payload[0].ID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if len(labels.Payload) > 0 {
+			if *labels.Payload[0].ClusterNum >= 1 {
+				// if label exist and already connect to a cluster
+				// means this cluster is already under management
+				return diag.Errorf("cluster %s is already under management", ip)
+			}
+			// if label exist but not connect to any cluster
+			// means this cluster may under terraform management sometime before, but remove by other reason
+			// re add the resource to this cluster
+			labelId = *labels.Payload[0].ID
+		}
+		d.SetId(*clusters.Payload[0].ID)
+	} else {
+		// if cluster ip is not connected, connect it
+		ccp := cluster.NewConnectClusterParams()
+		// cannot connect the same
+		ccp.RequestBody = []*models.ClusterCreationParams{{
+			IP:           &ip,
+			Username:     &username,
+			Password:     &password,
+			DatacenterID: &datacenterId,
+		}}
+		clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = waitClusterTasksFinish(ct, clusters.Payload)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		d.SetId(*clusters.Payload[0].Data.ID)
+	}
+	// if label not exist, mean this cluster is not under management
+	// create a new label
+	if labelId == "" {
+		labels, err := helper.CreateUniquenessLabel(ct.Api, resourceTypeCluster, *clusters.Payload[0].ID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		labelId = *labels.Payload[0].Data.ID
+	}
+	altrp := label.NewAddLabelsToResourcesParams()
+	altrp.RequestBody = &models.AddLabelsToResourcesParams{
+		Where: &models.LabelWhereInput{
+			ID: &labelId,
+		},
+		Data: &models.AddLabelsToResourcesParamsData{
+			Clusters: &models.ClusterWhereInput{
+				ID: &d.State().ID,
+			},
+		},
+	}
+	_, err = ct.Api.Label.AddLabelsToResources(altrp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-
 	return resourceClusterRead(ctx, d, meta)
 }
 
 func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-
 	id := d.Id()
 	gcp := cluster.NewGetClustersParams()
-	gcp.RequestBody = &models.GetClustersRequestBody{
-		Where: &models.ClusterWhereInput{
-			ID: &id,
-		},
+	if id == "" {
+		// if id is null, try to read by ip
+		ip := d.Get("ip").(string)
+		gcp.RequestBody = &models.GetClustersRequestBody{
+			Where: &models.ClusterWhereInput{
+				IP: &ip,
+			},
+		}
+	} else {
+		gcp.RequestBody = &models.GetClustersRequestBody{
+			Where: &models.ClusterWhereInput{
+				ID: &id,
+			},
+		}
 	}
+
 	clusters, err := ct.Api.Cluster.GetClusters(gcp)
 	if err != nil {
 		return diag.FromErr(err)
@@ -141,8 +217,13 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-	dcp := cluster.NewDeleteClusterParams()
 	id := d.Id()
+	// remove label
+	_, err := helper.DeleteUniquenessLabel(ct.Api, resourceTypeCluster, id)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	dcp := cluster.NewDeleteClusterParams()
 	dcp.RequestBody = &models.ClusterDeletionParams{
 		Where: &models.ClusterWhereInput{
 			ID: &id,
