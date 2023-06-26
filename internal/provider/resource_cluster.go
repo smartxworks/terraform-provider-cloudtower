@@ -57,41 +57,65 @@ func resourceCluster() *schema.Resource {
 
 func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	ccp := cluster.NewConnectClusterParams()
 	username := d.Get("username").(string)
 	password := d.Get("password").(string)
 	ip := d.Get("ip").(string)
 	datacenterId := d.Get("datacenter_id").(string)
-	ccp.RequestBody = []*models.ClusterCreationParams{{
-		IP:           &ip,
-		Username:     &username,
-		Password:     &password,
-		DatacenterID: &datacenterId,
-	}}
-	clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
+	// check if cluster is connected
+	gcp := cluster.NewGetClustersParams()
+	gcp.RequestBody = &models.GetClustersRequestBody{
+		Where: &models.ClusterWhereInput{
+			IP: &ip,
+		},
+	}
+	clusters, err := ct.Api.Cluster.GetClusters(gcp)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	d.SetId(*clusters.Payload[0].Data.ID)
-	err = waitClusterTasksFinish(ct, clusters.Payload)
-	if err != nil {
-		return diag.FromErr(err)
+	if len(clusters.Payload) > 0 {
+		d.SetId(*clusters.Payload[0].ID)
+	} else {
+		ccp := cluster.NewConnectClusterParams()
+		ccp.RequestBody = []*models.ClusterCreationParams{{
+			IP:           &ip,
+			Username:     &username,
+			Password:     &password,
+			DatacenterID: &datacenterId,
+		}}
+		clusters, err := ct.Api.Cluster.ConnectCluster(ccp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		d.SetId(*clusters.Payload[0].Data.ID)
+		err = waitClusterTasksFinish(ct, clusters.Payload)
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
-
 	return resourceClusterRead(ctx, d, meta)
 }
 
 func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ct := meta.(*cloudtower.Client)
-
 	id := d.Id()
 	gcp := cluster.NewGetClustersParams()
-	gcp.RequestBody = &models.GetClustersRequestBody{
-		Where: &models.ClusterWhereInput{
-			ID: &id,
-		},
+	if id == "" {
+		// if id is null, try to read by ip
+		ip := d.Get("ip").(string)
+		gcp.RequestBody = &models.GetClustersRequestBody{
+			Where: &models.ClusterWhereInput{
+				IP: &ip,
+			},
+		}
+	} else {
+		gcp.RequestBody = &models.GetClustersRequestBody{
+			Where: &models.ClusterWhereInput{
+				ID: &id,
+			},
+		}
 	}
+
 	clusters, err := ct.Api.Cluster.GetClusters(gcp)
 	if err != nil {
 		return diag.FromErr(err)
