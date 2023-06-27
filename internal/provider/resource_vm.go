@@ -1385,7 +1385,7 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	ct := meta.(*cloudtower.Client)
 	dvp := vm.NewDeleteVMParams()
 	id := d.Id()
-	dvp.RequestBody = &models.VMOperateParams{
+	dvp.RequestBody = &models.VMDeleteParams{
 		Where: &models.VMWhereInput{
 			ID: &id,
 		},
