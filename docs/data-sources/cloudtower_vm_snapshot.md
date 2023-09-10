@@ -75,3 +75,100 @@ Read-Only:
 - `vlan_id` (String)
 
 
+### Usage
+
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific vm snapshot
+
+use name will search a vm snapshot by its name directly. Return of the data source will be a list, even if there is only one vm snapshot found, use index 0 to get the vm snapshot.
+
+```hcl
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name       = "sample_vm_snapshot"
+}
+```
+
+### Use name_contains to fuzzy search vm snapshots
+
+use name_contains will search vm snapshots by its name contains a certain string. Return a list of vm snapshots, use index to get the vm snapshot.
+
+```hcl
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search vm snapshots in name array
+
+use name_in will search vm snapshots by its name in a certain array. Return a list of vm snapshots, use index to get the vm snapshot.
+
+```hcl
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name_in       = ["sample_vm_snapshot", "sample_vm_snapshot2"]
+}
+```
+
+### Use vm_id to get snapshot of a specific vm
+
+use vm_id will search a vm snapshot by its vm id directly. Return a list of vm snapshots, use index to get the vm snapshot.
+
+```hcl
+data "cloudtower_vm" "sample_vm" {
+  name       = "sample_vm"
+}
+
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  vm_id       = data.cloudtower_vm.sample_vm.vms[0].id
+}
+```
+
+### Use vm_id_in to search vm snapshots of vms
+
+use vm_id_in will search vm snapshots by its vm id in a certain array. Return a list of vm snapshots, use index to get the vm snapshot.
+
+```hcl
+data "cloudtower_vm" "sample_vm" {
+  name       = "sample_vm"
+}
+
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  vm_id_in       = [data.cloudtower_vm.sample_vm.vms[0].id, data.cloudtower_vm.sample_vm.vms[1].id]
+}
+```
+
+### rollback vm to specific snapshot
+
+if an snapshot is not managed by terraform, and you want to rollback vm to that snapshot, you can use this data source to get the snapshot id, and use it in cloudtower_vm resource.
+
+```hcl
+
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name       = "sample_vm_snapshot"
+}
+
+// here is an vm already been managed by terraform, rollback_to will not take effect when create vm.
+resource "cloudtower_vm" "sample_vm" {
+  name       = "sample_vm"
+  # ... any other vm configuration
+  rollback_to = data.cloudtower_vm_snapshot.sample_vm_snapshot.vm_snapshots[0].id
+}
+```
+
+### rebuild vm from specific snapshot
+
+if an snapshot is not managed by terraform, and you want to rebuild vm from that snapshot, you can use this data source to get the snapshot id, and use it in cloudtower_vm resource.
+
+```hcl
+data "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name       = "sample_vm_snapshot"
+}
+
+resource "cloudtower_vm" "sample_vm_rebuild" {
+  name       = "tf-test-vm-from-snapshot"
+  cluster_id = cloudtower_cluster.sample_cluster.id
+  create_effect {
+    rebuild_from_snapshot = data.cloudtower_vm_snapshot.sample_vm_snapshot.vm_snapshots[0].id
+  }
+}
+```

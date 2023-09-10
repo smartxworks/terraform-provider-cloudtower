@@ -24,3 +24,14 @@ CloudTower datacenter resource.
 - `id` (String) datacenter's id
 
 
+## Usage
+
+### Create a datacenter
+
+This will create a datacenter in cloudtower, and will manage its lifecycle with terraform
+
+```hcl
+resource "cloudtower_datacenter" "sample_datacenter" {
+  name = "sample_datacenter"
+}
+```

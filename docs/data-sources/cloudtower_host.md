@@ -45,3 +45,127 @@ Read-Only:
 - `name` (String)
 
 
+## Usage
+
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific host
+
+use name will search a host by its name directly. Return of the data source will be a list, even if there is only one host found, use index 0 to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  name       = "sample_host"
+}
+```
+
+### Use name_contains to fuzzy search hosts
+
+use name_contains will search hosts by its name contains a certain string. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search hosts in name array
+
+use name_in will search hosts by its name in a certain array. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  name_in       = ["sample1", "sample2"]
+}
+```
+
+### Use management_ip to get a specific host
+
+use management_ip will search a host by its management_ip directly. Return of the data source will be a list, even if there is only one host found, use index 0 to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  management_ip       = "192.168.1.1"
+}
+```
+
+### Use management_ip_contains to fuzzy search hosts
+
+use management_ip_contains will search hosts by its management_ip contains a certain string. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  management_ip_contains       = "31.16"
+}
+```
+
+### Use management_ip_in to search hosts in management_ip array
+
+use management_ip_in will search hosts by its management_ip in a certain array. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  management_ip_in       = ["192.168.1.1", "192.168.1.2"]
+}
+```
+
+### Use data_ip to get a specific host
+
+use data_ip will search a host by its data_ip directly. Return of the data source will be a list, even if there is only one host found, use index 0 to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  data_ip       = "10.0.1.1"
+}
+```
+
+### Use data_ip_contains to fuzzy search hosts
+
+use data_ip_contains will search hosts by its data_ip contains a certain string. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  data_ip_contains       = "255.255"
+}
+```
+
+### Use data_ip_in to search hosts in data_ip array
+
+use data_ip_in will search hosts by its data_ip in a certain array. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_host" "sample_host" {
+  data_ip_in       = ["10.0.1.1", "10.0.255.255"]
+}
+
+```
+
+### Use cluster_id to get host in a specific cluster
+
+use cluster_id will search hosts in a specific cluster. Return a list of hosts, use index to get the host.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+
+data "cloudtower_host" "sample_host" {
+  cluster_id          = data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id
+}
+```
+
+### Use cluster_id_in to get hosts in a one of clusters
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+
+data "cloudtower_host" "sample_host" {
+  cluster_id_in          = [data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id]
+}
+```
+
+
+
+

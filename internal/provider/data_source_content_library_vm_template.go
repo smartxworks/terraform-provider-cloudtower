@@ -42,9 +42,18 @@ func dataSourceContentLibraryVmTemplate() *schema.Resource {
 				Optional:    true,
 				Description: "filter content_library vm template by its name contains characters",
 			},
-			"cluster_in": {
+			"cluster_id_in": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Description: "the cluster id which template has already distributed to.",
+			},
+			"cluster_in": {
+				Type:       schema.TypeList,
+				Optional:   true,
+				Deprecated: "cluster_in is deprecated, use cluster_id_in instead.",
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
@@ -195,7 +204,10 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 		gp.RequestBody.Where.NameContains = &nameContains
 	}
 
-	raw_cluster_id, ok := d.GetOk("cluster_id")
+	raw_cluster_id, ok := d.GetOk("cluster_id_in")
+	if !ok {
+		raw_cluster_id, ok = d.GetOk("cluster_in")
+	}
 	if ok {
 		bytes, err := json.Marshal(raw_cluster_id)
 		if err != nil {
