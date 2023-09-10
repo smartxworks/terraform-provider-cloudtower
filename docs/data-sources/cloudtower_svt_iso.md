@@ -40,4 +40,62 @@ Read-Only:
 - `name` (String)
 - `version` (Number)
 
+### Usage
 
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific image
+
+use name will search a image by its name directly. Return of the data source will be a list, even if there is only one image found, use index 0 to get the image.
+
+```hcl
+data "cloudtower_svt_iso" "sample_iso" {
+  name       = "sample_iso"
+}
+```
+
+### Use name_contains to fuzzy search images
+
+use name_contains will search images by its name contains a certain string. Return a list of images, use index to get the image.
+
+```hcl
+data "cloudtower_svt_iso" "sample_iso" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search images in name array
+
+use name_in will search images by its name in a certain array. Return a list of images, use index to get the image.
+
+```hcl
+data "cloudtower_svt_iso" "sample_iso" {
+  name_in       = ["sample_iso", "sample_iso2"]
+}
+```
+
+### Use cluster_id to get a specific image stored in a cluster
+
+use cluster_id will search a image by its cluster id directly. Return of the data source will be a list, even if there is only one image found, use index 0 to get the image.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+data "cloudtower_svt_iso" "sample_iso" {
+  cluster_id       = data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id
+}
+```
+
+### Use cluster_id_in to search images stored in a cluster in a certain array
+
+use cluster_id_in will search images by its cluster id in a certain array. Return a list of images, use index to get the image. Recommend to use cluster_id, as vm could only mount svt iso directly from cluster it runs on.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+data "cloudtower_svt_iso" "sample_iso" {
+  cluster_id_in       = [data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id]
+}
+```

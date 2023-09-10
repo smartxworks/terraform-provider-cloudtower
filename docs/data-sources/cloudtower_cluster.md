@@ -34,4 +34,36 @@ Read-Only:
 - `id` (String)
 - `name` (String)
 
+## Usage
 
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific cluster
+
+use name will search a cluster by its name directly. Return of the data source will be a list, even if there is only one cluster found, use index 0 to get the cluster.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+```
+
+### Use name_contains to fuzzy search clusters
+
+use name_contains will search clusters by its name contains a certain string. Return a list of clusters, use index to get the cluster.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search clusters in name array
+
+use name_in will search clusters by its name in a certain array. Return a list of clusters, use index to get the cluster.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name_in       = ["sample_cluster", "sample_cluster2"]
+}
+```

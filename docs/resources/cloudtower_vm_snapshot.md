@@ -65,4 +65,37 @@ Read-Only:
 - `model` (String)
 - `vlan_id` (String)
 
+## Usage
 
+### Create a vm snapshot
+
+This will create a vm snapshot in cloudtower, and will manage its lifecycle with terraform
+
+```hcl
+data "cloudtower_vm" "sample_vm" {
+  name       = "sample_vm"
+}
+
+resource "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name       = "sample_vm_snapshot"
+  vm_id      = data.cloudtower_vm.sample_vm.vms[0].id
+}
+```
+
+### Create a vm snapshot with consistent_type
+
+Consisent type can be defined when create a vm snapshot.
+
+Only accept `["CRASH_CONSISTENT", "FILE_SYSTEM_CONSISTENT"]`, and Only Vm tools is running on the VM, `FILE_SYSTEM_CONSISTENT` can be used.
+
+```hcl
+data "cloudtower_vm" "sample_vm" {
+  name       = "sample_vm"
+}
+
+resource "cloudtower_vm_snapshot" "sample_vm_snapshot" {
+  name       = "sample_vm_snapshot"
+  vm_id      = data.cloudtower_vm.sample_vm.vms[0].id
+  consistent_type = "FILE_SYSTEM_CONSISTENT"
+}
+```

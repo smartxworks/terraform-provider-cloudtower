@@ -40,4 +40,91 @@ Read-Only:
 - `name` (String)
 - `type` (String)
 
+### Usage
 
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific vlan
+
+use name will search a vlan by its name directly. Return of the data source will be a list, even if there is only one vlan found, use index 0 to get the vlan.
+
+```hcl
+data "cloudtower_vlan" "sample_vlan" {
+  name       = "sample_vlan"
+}
+```
+
+### Use name_contains to fuzzy search vlans
+
+use name_contains will search vlans by its name contains a certain string. Return a list of vlans, use index to get the vlan.
+
+```hcl
+data "cloudtower_vlan" "sample_vlan" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search vlans in name array
+
+use name_in will search vlans by its name in a certain array. Return a list of vlans, use index to get the vlan.
+
+```hcl
+data "cloudtower_vlan" "sample_vlan" {
+  name_in       = ["sample_vlan", "sample_vlan2"]
+}
+```
+
+### Use type to get a filter vlans by type
+
+filter vlan by type, return a list of vlans, use index to get the vlan, recommand to use with other filters.
+
+Only accept `"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"`
+
+```hcl
+data "cloudtower_vlan" "sample_vlan" {
+  type      = "VM"
+  name      = "sample_vlan"
+}
+```
+
+### Use type_in to filter vlans by type as array
+
+filter vlans by type in a certain array, return a list of vlans, use index to get the vlan, recommand to use with other filters.
+
+Only accept `"ACCESS", "MANAGEMENT", "MIGRATION", "STORAGE", "VM"`
+
+```hcl
+data "cloudtower_vlan" "sample_vlan" {
+  type_in      = ["VM", "STORAGE"]
+  name      = "sample_vlan"
+}
+```
+
+### Use cluster_id to get a specific vlan stored in a cluster
+
+use cluster_id will search a vlan by its cluster id directly. Return a list of vlans, use index to get the vlan.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+
+data "cloudtower_vlan" "sample_vlan" {
+  cluster_id       = data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id
+}
+```
+
+### Use cluster_id_in to search vlans stored in clusters
+
+use cluster_id_in will search vlans by its cluster id in a certain array. Return a list of vlans, use index to get the vlan, recommand to use with other filters.
+
+```hcl
+data "cloudtower_cluster" "sample_cluster" {
+  name       = "sample_cluster"
+}
+
+data "cloudtower_vlan" "sample_vlan" {
+  cluster_id_in       = [data.cloudtower_cluster.sample_cluster.clusters[0].clusters[0].id]
+  name      = "sample_vlan"
+}
+```

@@ -67,4 +67,51 @@ Read-Only:
 - `model` (String)
 - `vlan_id` (String)
 
+## Usage
 
+use content library vm template can help you share template accross clusters.
+
+### create a template from vm
+
+This will create a template from vm in cloudtower, the template store in specified cluster.
+
+use cloud_init_supported to mark if template support cloud_init.
+
+specified more cluster_id to distribute template to other clusters.
+
+```hcl
+
+datasource "cloudtower_cluster" "sample_cluster" {
+  name = "sample_cluster"
+}
+
+datasource "cloudtower_vm" "sample_vm" {
+  name = "sample_vm"
+}
+
+resource "cloudtower_content_library_vm_template" "sample_template" {
+  name = "sample_template"
+  cloud_init_supported = false
+  cluster_id = [data.cloudtower_cluster.sample_cluster.clusters[0].id]
+  src_vm_id = data.cloudtower_vm.sample_vm.vms[0].id
+}
+```
+
+
+### clone a vm from content library template
+
+Clone a vm from content library template, this will create a vm directly from a template, without any modification, for further usage, please see cloudtower_vm resource.
+
+```hcl
+datasource "cloudtower_vm_template" "sample_template" {
+  name = "tf-test-template"
+}
+
+resource "cloudtower_vm" "sample_cloned_vm" {
+  name = "tf-test-cloned-vm-from-template"
+  create_effect {
+    is_full_copy        = false
+    clone_from_template = data.cloudtower_vm_template.sample_template.vm_templates[0].id
+  }
+}
+```

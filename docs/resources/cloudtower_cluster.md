@@ -31,3 +31,37 @@ CloudTower cluster resource.
 - `name` (String) cluster's name
 
 
+## Usage
+
+### Connect a cluster
+
+This will connect a cluster to cloudtower.
+
+```hcl
+resource "cloudtower_cluster" "sample_cluster" {
+  ip       = "192.168.1.1"
+  username = "admin"
+  password = "password"
+}
+```
+
+### Connect a cluster and add it to a datacenter
+
+Connect a cluster, and also add the cluster to a datacenter.
+
+```hcl
+data "cloudtower_datacenter" "sample_datacenter" {
+  name = "sample_datacenter"
+}
+
+resource "cloudtower_cluster" "sample_cluster" {
+  ip       = "192.168.1.1"
+  username = "admin"
+  password = "password"
+  datacenter_id = data.cloudtower_datacenter.sample_datacenter.datacenters[0].id
+}
+```
+
+## Restrictions
+
+If an cluster has already been connected to cloudtower, it will throw an error if you try to connect it again. You can use datasource to handle it or import the cluster to terraform state.

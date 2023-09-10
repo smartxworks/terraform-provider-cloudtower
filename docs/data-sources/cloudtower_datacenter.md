@@ -34,4 +34,37 @@ Read-Only:
 - `id` (String)
 - `name` (String)
 
+## Usage
+
+All arguments are optional, and if multiple arguments are provided, they are ANDed together.
+
+### Use name to get a specific datacenter
+
+use name will search a datacenter by its name directly. Return of the data source will be a list, even if there is only one datacenter found, use index 0 to get the datacenter.
+
+```hcl
+data "cloudtower_datacenter" "sample_datacenter" {
+  name       = "sample_datacenter"
+}
+```
+
+### Use name_contains to fuzzy search datacenters
+
+use name_contains will search datacenters by its name contains a certain string. Return a list of datacenters, use index to get the datacenter.
+
+```hcl 
+data "cloudtower_datacenter" "sample_datacenter" {
+  name_contains       = "sample"
+}
+```
+
+### Use name_in to search datacenters in name array
+
+use name_in will search datacenters by its name in a certain array. Return a list of datacenters, use index to get the datacenter.
+
+```hcl
+data "cloudtower_datacenter" "sample_datacenter" {
+  name_in       = ["sample1", "sample2"]
+}
+```
 
