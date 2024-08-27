@@ -198,7 +198,7 @@ func resourceVm() *schema.Resource {
 						},
 						"iso_id": {
 							Type:        schema.TypeString,
-							Required:    true,
+							Optional:    true,
 							Description: "mount an ISO to a VM CD-ROM by specific it's id",
 						},
 						"id": {
