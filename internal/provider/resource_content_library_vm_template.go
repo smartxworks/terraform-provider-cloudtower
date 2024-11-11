@@ -195,7 +195,7 @@ func resourceContentLibraryVmTemplateCreate(ctx context.Context, d *schema.Resou
 		}
 		templates = response.Payload
 	} else {
-		return diag.FromErr((fmt.Errorf("must set src_vm_id")))
+		return diag.FromErr(fmt.Errorf("must set src_vm_id"))
 	}
 	d.SetId(*templates[0].Data.ID)
 	_, err := ct.WaitTasksFinish([]string{*templates[0].TaskID})
@@ -210,31 +210,40 @@ func resourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resourc
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
-	gvtp := vm_template.NewGetVMTemplatesParams()
-	gvtp.RequestBody = &models.GetVMTemplatesRequestBody{
-		Where: &models.VMTemplateWhereInput{
+	gclvtp := content_library_vm_template.NewGetContentLibraryVMTemplatesParams()
+	gclvtp.RequestBody = &models.GetContentLibraryVMTemplatesRequestBody{
+		Where: &models.ContentLibraryVMTemplateWhereInput{
 			ID: &id,
 		},
 	}
-	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gvtp)
+	vmTemplates, err := ct.Api.ContentLibraryVMTemplate.GetContentLibraryVMTemplates(gclvtp)
 	if err != nil {
-		return diag.FromErr(err)
+		diags = append(diags, diag.FromErr(err)...)
+		return diags
 	}
 	if len(vmTemplates.Payload) < 1 {
 		d.SetId("")
+		diags = append(diags, diag.Errorf("len(vmTemplates.Payload) < 1")...)
 		return diags
 	}
-	template := vmTemplates.Payload[0]
+	template := vmTemplates.Payload[0].VMTemplates[0]
 	if err = d.Set("name", template.Name); err != nil {
 		diags = append(diags, diag.FromErr(err)...)
 	}
 	var disks []map[string]interface{} = make([]map[string]interface{}, 0)
 	var cdroms []map[string]interface{} = make([]map[string]interface{}, 0)
-	for _, disk := range template.VMDisks {
+	gvtp := vm_template.NewGetVMTemplatesParams()
+	gvtp.RequestBody = &models.GetVMTemplatesRequestBody{
+		Where: &models.VMTemplateWhereInput{
+			ID: template.ID,
+		},
+	}
+	resp, err := ct.Api.VMTemplate.GetVMTemplates(gvtp)
+	rawTemplate := resp.Payload[0]
+	for _, disk := range rawTemplate.VMDisks {
 		if *disk.Type == models.VMDiskTypeDISK {
 			storagePolicy, err := helper.GetElfStoragePolicyByLocalId(ct.Api, *disk.StoragePolicyUUID)
 			if err != nil {
-				// return diag.FromErr(err)
 				diags = append(diags, diag.FromErr(err)...)
 				continue
 			}
@@ -275,10 +284,11 @@ func resourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resourc
 		diags = append(diags, diag.FromErr(err)...)
 	}
 	var nics []map[string]interface{} = make([]map[string]interface{}, 0)
-	for _, nic := range template.VMNics {
+	for _, nic := range rawTemplate.VMNics {
 		nicVlan, err := helper.GetVlanFromLocalId(ct.Api, *nic.Vlan.VlanLocalID)
 		if err != nil {
-			return diag.FromErr(err)
+			diags = append(diags, diag.FromErr(err)...)
+			continue
 		}
 		nics = append(nics, map[string]interface{}{
 			"vlan_id": nicVlan.ID,
