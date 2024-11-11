@@ -1458,7 +1458,7 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 	folderId, ok := d.GetOk("folder_id")
 	if ok {
 		folderId := folderId.(string)
-		basicConfig.HostId = &folderId
+		basicConfig.FolderId = &folderId
 	}
 	description, ok := d.GetOk("description")
 	if ok {
