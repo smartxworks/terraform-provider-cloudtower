@@ -210,6 +210,7 @@ func resourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resourc
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
+	num := int32(1)
 	gvtp := vm_template.NewGetVMTemplatesParams()
 	gvtp.RequestBody = &models.GetVMTemplatesRequestBody{
 		Where: &models.VMTemplateWhereInput{
@@ -217,6 +218,7 @@ func resourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resourc
 				ID: &id,
 			},
 		},
+		First: &num,
 	}
 	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gvtp)
 	if err != nil {
