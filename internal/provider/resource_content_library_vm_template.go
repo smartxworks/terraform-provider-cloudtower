@@ -195,7 +195,7 @@ func resourceContentLibraryVmTemplateCreate(ctx context.Context, d *schema.Resou
 		}
 		templates = response.Payload
 	} else {
-		return diag.FromErr((fmt.Errorf("must set src_vm_id")))
+		return diag.FromErr(fmt.Errorf("must set src_vm_id"))
 	}
 	d.SetId(*templates[0].Data.ID)
 	_, err := ct.WaitTasksFinish([]string{*templates[0].TaskID})
@@ -210,11 +210,15 @@ func resourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resourc
 	ct := meta.(*cloudtower.Client)
 
 	id := d.Id()
+	num := int32(1)
 	gvtp := vm_template.NewGetVMTemplatesParams()
 	gvtp.RequestBody = &models.GetVMTemplatesRequestBody{
 		Where: &models.VMTemplateWhereInput{
-			ID: &id,
+			ContentLibraryVMTemplate: &models.ContentLibraryVMTemplateWhereInput{
+				ID: &id,
+			},
 		},
+		First: &num,
 	}
 	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gvtp)
 	if err != nil {
