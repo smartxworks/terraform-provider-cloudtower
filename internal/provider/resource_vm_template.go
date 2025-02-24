@@ -23,27 +23,6 @@ func resourceVmTemplate() *schema.Resource {
 		UpdateContext: resourceVmTemplateUpdate,
 
 		Schema: map[string]*schema.Schema{
-			// "create_effect": {
-			// 	Type:     schema.TypeList,
-			// 	MaxItems: 1,
-			// 	Required: true,
-			// 	Elem: &schema.Resource{
-			// 		Schema: map[string]*schema.Schema{
-			// 			"clone_from_vm": {
-			// 				Type:        schema.TypeString,
-			// 				Optional:    true,
-			// 				ForceNew:    true,
-			// 				Description: "Id of source vm from created vm to be cloned from",
-			// 			},
-			// 			// "convert_from_vm": {
-			// 			// 	Type:        schema.TypeString,
-			// 			// 	Optional:    true,
-			// 			// 	ForceNew:    true,
-			// 			// 	Description: "Id of source vm from created vm to be converted from",
-			// 			// },
-			// 		},
-			// 	},
-			// },
 			"src_vm_id": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -176,42 +155,8 @@ func resourceVmTemplate() *schema.Resource {
 
 func resourceVmTemplateCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	ct := meta.(*cloudtower.Client)
-	// convertedFrom := d.Get("create_effect.0.convert_from_vm").(string)
 	cloneFrom := d.Get("src_vm_id").(string)
 	var templates []*models.WithTaskVMTemplate
-	// if convertedFrom != "" && cloneFrom != "" {
-	// 	return diag.FromErr(fmt.Errorf("convert_from_vm and clone_from_vm can not be set at the same time"))
-	// } else if convertedFrom != "" {
-	// 	// we maybe need to remove this later
-	// 	gvp := vm.NewGetVmsParams()
-	// 	gvp.RequestBody = &models.GetVmsRequestBody{
-	// 		Where: &models.VMWhereInput{
-	// 			ID: &convertedFrom,
-	// 		},
-	// 	}
-	// 	vms, err := ct.Api.VM.GetVms(gvp)
-	// 	if err != nil {
-	// 		return diag.FromErr(err)
-	// 	}
-	// 	cvtfv := vm_template.NewConvertVMTemplateFromVMParams()
-	// 	name := d.Get("name").(string)
-	// 	description := d.Get("description").(string)
-	// 	cloudInitSupported := d.Get("cloud_init_supported").(bool)
-	// 	cvtfv.RequestBody = []*models.VMTemplateCreationParams{
-	// 		{
-	// 			VMID:               &convertedFrom,
-	// 			Name:               &name,
-	// 			Description:        &description,
-	// 			CloudInitSupported: &cloudInitSupported,
-	// 			ClusterID:          vms.Payload[0].Cluster.ID,
-	// 		},
-	// 	}
-	// 	response, err := ct.Api.VMTemplate.ConvertVMTemplateFromVM(cvtfv)
-	// 	if err != nil {
-	// 		return diag.FromErr(err)
-	// 	}
-	// 	templates = response.Payload
-	// } else
 	if cloneFrom != "" {
 		cvtfv := vm_template.NewCloneVMTemplateFromVMParams()
 		name := d.Get("name").(string)

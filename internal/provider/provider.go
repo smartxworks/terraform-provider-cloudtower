@@ -66,6 +66,7 @@ func New(version string) func() *schema.Provider {
 				"cloudtower_vm_snapshot":                 dataSourceVmSnapshot(),
 				"cloudtower_vm_template":                 dataSourceVmTemplate(),
 				"cloudtower_content_library_vm_template": dataSourceContentLibraryVmTemplate(),
+				"cloudtower_vm_volume":                   dataSourceVmVolume(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  resourceDatacenter(),
