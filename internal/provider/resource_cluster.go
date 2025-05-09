@@ -73,7 +73,7 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.FromErr(err)
 	}
 	d.SetId(*clusters.Payload[0].Data.ID)
-	err = waitClusterTasksFinish(ct, clusters.Payload)
+	err = waitClusterTasksFinish(ctx, ct, clusters.Payload)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -130,7 +130,7 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	err = waitClusterTasksFinish(ct, clusters.Payload)
+	err = waitClusterTasksFinish(ctx, ct, clusters.Payload)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -158,7 +158,7 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	_, err = ct.WaitTasksFinish(taskIds)
+	_, err = ct.WaitTasksFinish(ctx, taskIds)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -167,13 +167,13 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 	return diags
 }
 
-func waitClusterTasksFinish(ct *cloudtower.Client, clusters []*models.WithTaskCluster) error {
+func waitClusterTasksFinish(ctx context.Context, ct *cloudtower.Client, clusters []*models.WithTaskCluster) error {
 	taskIds := make([]string, 0)
 	for _, c := range clusters {
 		if c.TaskID != nil {
 			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	_, err := ct.WaitTasksFinish(taskIds)
+	_, err := ct.WaitTasksFinish(ctx, taskIds)
 	return err
 }

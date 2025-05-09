@@ -1,6 +1,7 @@
 package cloudtower
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/utils"
 	"github.com/hasura/go-graphql-client"
 	apiclient "github.com/smartxworks/cloudtower-go-sdk/v2/client"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/organization"
@@ -82,7 +84,7 @@ func NewClient(server string, username string, passwd string, source models.User
 	}, nil
 }
 
-func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
+func (c *Client) WaitTasksFinish(ctx context.Context, taskIds []string) (*task.GetTasksOK, error) {
 	if len(taskIds) == 0 {
 		return task.NewGetTasksOK(), nil
 	}
@@ -93,28 +95,35 @@ func (c *Client) WaitTasksFinish(taskIds []string) (*task.GetTasksOK, error) {
 		},
 	}
 	for {
-		tasksResp, err := c.Api.Task.GetTasks(tasksParams)
-		if err != nil {
-			return nil, err
-		}
-		allFinished := true
-		for _, v := range tasksResp.Payload {
-			if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
-				allFinished = false
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+			tasksResp, err := utils.RetryWithExponentialBackoff(ctx, func() (*task.GetTasksOK, error) {
+				return c.Api.Task.GetTasks(tasksParams)
+			}, utils.RetryWithExponentialBackoffOptions{})
+			if err != nil {
+				return nil, err
 			}
-			if *v.Status == models.TaskStatusFAILED {
-				return nil, errors.New(*v.ErrorMessage)
+
+			allFinished := true
+			for _, v := range tasksResp.Payload {
+				if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
+					allFinished = false
+				}
+				if *v.Status == models.TaskStatusFAILED {
+					return nil, errors.New(*v.ErrorMessage)
+				}
 			}
+			if !allFinished {
+				continue
+			}
+			return tasksResp, nil
 		}
-		if !allFinished {
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		return tasksResp, nil
 	}
 }
 
-func (c *Client) WaitTaskForResource(id string, task_type string) (*task.GetTasksOK, error) {
+func (c *Client) WaitTaskForResource(ctx context.Context, id string, task_type string) (*task.GetTasksOK, error) {
 	tasksParams := task.NewGetTasksParams()
 	var first int32 = 1
 	tasksParams.RequestBody = &models.GetTasksRequestBody{
@@ -126,23 +135,29 @@ func (c *Client) WaitTaskForResource(id string, task_type string) (*task.GetTask
 		First:   &first,
 	}
 	for {
-		tasksResp, err := c.Api.Task.GetTasks(tasksParams)
-		if err != nil {
-			return nil, err
-		}
-		allFinished := true
-		for _, v := range tasksResp.Payload {
-			if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
-				allFinished = false
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+			tasksResp, err := utils.RetryWithExponentialBackoff(ctx, func() (*task.GetTasksOK, error) {
+				return c.Api.Task.GetTasks(tasksParams)
+			}, utils.RetryWithExponentialBackoffOptions{})
+			if err != nil {
+				return nil, err
 			}
-			if *v.Status == models.TaskStatusFAILED {
-				return nil, errors.New(*v.ErrorMessage)
+			allFinished := true
+			for _, v := range tasksResp.Payload {
+				if *v.Status != models.TaskStatusSUCCESSED && *v.Status != models.TaskStatusFAILED {
+					allFinished = false
+				}
+				if *v.Status == models.TaskStatusFAILED {
+					return nil, errors.New(*v.ErrorMessage)
+				}
 			}
+			if !allFinished {
+				continue
+			}
+			return tasksResp, nil
 		}
-		if !allFinished {
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		return tasksResp, nil
 	}
 }

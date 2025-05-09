@@ -198,7 +198,7 @@ func resourceContentLibraryVmTemplateCreate(ctx context.Context, d *schema.Resou
 		return diag.FromErr(fmt.Errorf("must set src_vm_id"))
 	}
 	d.SetId(*templates[0].Data.ID)
-	_, err := ct.WaitTasksFinish([]string{*templates[0].TaskID})
+	_, err := ct.WaitTasksFinish(ctx, []string{*templates[0].TaskID})
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -321,7 +321,7 @@ func resourceContentLibraryVmTemplateDelete(ctx context.Context, d *schema.Resou
 			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	_, err = ct.WaitTasksFinish(taskIds)
+	_, err = ct.WaitTasksFinish(ctx, taskIds)
 	if err != nil {
 		return diag.FromErr(err)
 	}
