@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/helper"
+	"github.com/hashicorp/terraform-provider-cloudtower/internal/utils"
 	"github.com/hasura/go-graphql-client"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/content_library_vm_template"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
@@ -277,6 +280,77 @@ func resourceVm() *schema.Resource {
 					},
 				},
 			},
+			"hostname": {
+				Type:        schema.TypeString,
+				Description: "VM's hostname",
+				Optional:    true,
+				Computed:    true,
+				ValidateDiagFunc: func(v interface{}, _ cty.Path) diag.Diagnostics {
+					// if hostname is configured, it must be a non empty string
+					var diags diag.Diagnostics
+					val, ok := v.(string)
+					if !ok {
+						return append(diags, diag.Diagnostic{
+							Severity: diag.Error,
+							Summary:  "Wrong type",
+							Detail:   "Hostname should be a string",
+						})
+					} else if len(val) == 0 {
+						return append(diags, diag.Diagnostic{
+							Severity: diag.Error,
+							Summary:  "Wrong type",
+							Detail:   "Hostname should not be empty, if you dont want to set it, remove it from the config",
+						})
+					}
+					return diags
+				},
+			},
+			"dns_servers": {
+				Type: schema.TypeList,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Optional:    true,
+				Computed:    true,
+				MaxItems:    3,
+				Description: "DNS server list",
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					oldList := strings.Split(old, ",")
+					newList := strings.Split(new, ",")
+					sort.Strings(oldList)
+					sort.Strings(newList)
+					if len(oldList) != len(newList) {
+						return false
+					}
+					for i := range oldList {
+						if oldList[i] != newList[i] {
+							return false
+						}
+					}
+					return true
+				},
+			},
+			"guest_os_account": {
+				Type:        schema.TypeList,
+				MaxItems:    1,
+				Description: "VM's guest OS account",
+				Optional:    true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"username": {
+							Type:        schema.TypeString,
+							Description: "VM's guest OS account username",
+							Required:    true,
+						},
+						"password": {
+							Type:        schema.TypeString,
+							Description: "VM's guest OS account password",
+							Required:    true,
+							Sensitive:   true,
+						},
+					},
+				},
+			},
 			// create vm from another resource, template, snapshot or source vm
 			"create_effect": {
 				Type:     schema.TypeList,
@@ -330,6 +404,7 @@ func resourceVm() *schema.Resource {
 										Optional:    true,
 										ForceNew:    true,
 										Description: "Password of default user",
+										Sensitive:   true,
 									},
 									"nameservers": {
 										Type: schema.TypeList,
@@ -535,6 +610,11 @@ type VmNic struct {
 	Idx    int    `json:"idx"`
 }
 
+type VmGuestOsAccount struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type VmUpdateInput struct {
 	Name        string        `json:"name,omitempty"`
 	Memory      int64         `json:"memory,omitempty"`
@@ -544,6 +624,8 @@ type VmUpdateInput struct {
 	Cpu         *CpuStruct    `json:"cpu,omitempty"`
 	VmNics      *VmNicStruct  `json:"vm_nics,omitempty"`
 	VmDisks     *VmDiskStruct `json:"vm_disks,omitempty"`
+	Hostname    string        `json:"hostname,omitempty"`
+	DnsServers  string        `json:"dns_servers,omitempty"`
 }
 
 type CpuStruct struct {
@@ -564,6 +646,7 @@ type VmNicCreate struct {
 	Model      models.VMNicModel `json:"model,omitempty"`
 	Nic        *ConnectStruct    `json:"nic,omitempty"`
 	Vlan       *ConnectStruct    `json:"vlan,omitempty"`
+	IpType     string            `json:"ip_type,omitempty"`
 }
 
 type VmNicDelete struct {
@@ -633,13 +716,16 @@ type ConnectConnect struct {
 	Id string `json:"id"`
 }
 
-type UpdateVmEffect map[string]interface{}
+type UpdateVmEffect struct {
+	GuestOsUsername string `json:"guest_os_username,omitempty"`
+	GuestOsPassword string `json:"guest_os_password,omitempty"`
+}
 type VmWhereUniqueInput map[string]interface{}
 
 var updateVm struct {
 	UpdateVm struct {
 		Id graphql.String
-	} `graphql:"updateVm(data: $data, effect: $effect,where:$where)"`
+	} `graphql:"updateVm(data: $data, effect: $effect, where:$where)"`
 }
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -674,10 +760,6 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 	if vms == nil {
 		return diags
-	}
-	err := waitVmTasksFinish(ct, vms)
-	if err != nil {
-		return diag.FromErr(err)
 	}
 	d.SetId(*vms[0].Data.ID)
 	return resourceVmRead(ctx, d, meta)
@@ -729,6 +811,18 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 	if err := d.Set("cpu_sockets", v.CPU.Sockets); err != nil {
+		return diag.FromErr(err)
+	}
+	if v.DNSServers != nil {
+		dnsServers := make([]string, 0)
+		if v.DNSServers != nil && *v.DNSServers != "" {
+			dnsServers = strings.Split(*v.DNSServers, ",")
+		}
+		if err := d.Set("dns_servers", dnsServers); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	if err := d.Set("hostname", v.Hostname); err != nil {
 		return diag.FromErr(err)
 	}
 	vmNics, diags := readVmNics(ctx, d, ct)
@@ -812,6 +906,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	id := d.Id()
 	originalVm, _ := readVm(ctx, d, ct)
 	var updateParams VmUpdateInput = VmUpdateInput{}
+	var updateEffect UpdateVmEffect = UpdateVmEffect{}
 	// handle update data first, if there is error in data, will not execute other mutation
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
 		basic, err := expandVmBasicConfig(d)
@@ -908,6 +1003,26 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
+	// handle hostname and dns_servers
+	if d.HasChanges("hostname", "dns_servers", "guest_os_account") {
+		toolConfig, err := expandVmToolsConfig(d, id, nil)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if toolConfig != nil {
+			if d.HasChange("hostname") && toolConfig.hostname != "" {
+				updateParams.Hostname = toolConfig.hostname
+			}
+			if d.HasChange("dns_servers") && toolConfig.dnsServers != "" {
+				updateParams.DnsServers = toolConfig.dnsServers
+			}
+			if d.HasChanges("guest_os_account.0.password", "guest_os_account.0.username") {
+				updateEffect.GuestOsUsername = toolConfig.guestOsUsername
+				updateEffect.GuestOsPassword = toolConfig.guestOsPassword
+			}
+		}
+	}
+
 	if d.HasChange("nic") {
 		// delete all previous vm nic
 		nicsToDelete := make([]VmNicDelete, 0)
@@ -936,29 +1051,32 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				nicId = *n.ConnectVlanID
 			}
 			var vlanId string = ""
-			if n.ConnectVlanID != nil {
-				vlanId = *n.ConnectVlanID
+			if n.VlanId != "" {
+				vlanId = n.VlanId
 			}
-			nicsToCreate = append(nicsToCreate,
-				VmNicCreate{
-					Enabled:    *n.Enabled,
-					Gateway:    *n.Gateway,
-					IPAddress:  *n.IPAddress,
-					LocalId:    *n.LocalID,
-					MacAddress: *n.MacAddress,
-					Model:      *n.Model,
-					SubnetMask: *n.SubnetMask,
-					Nic: &ConnectStruct{
-						Connect: &ConnectConnect{
-							Id: nicId,
-						},
+			nicToCreate := VmNicCreate{
+				Enabled:    *n.Enabled,
+				Gateway:    *n.Gateway,
+				IPAddress:  *n.IPAddress,
+				LocalId:    "",
+				MacAddress: *n.MacAddress,
+				Model:      *n.Model,
+				SubnetMask: *n.SubnetMask,
+				Nic: &ConnectStruct{
+					Connect: &ConnectConnect{
+						Id: nicId,
 					},
-					Vlan: &ConnectStruct{
-						Connect: &ConnectConnect{
-							Id: vlanId,
-						},
+				},
+				Vlan: &ConnectStruct{
+					Connect: &ConnectConnect{
+						Id: vlanId,
 					},
-				})
+				},
+			}
+			if n.IPAddress != nil {
+				nicToCreate.IpType = "STATIC"
+			}
+			nicsToCreate = append(nicsToCreate, nicToCreate)
 		}
 		updateParams.VmNics = &VmNicStruct{
 			Create: nicsToCreate,
@@ -1250,11 +1368,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 						SnapshotID: &rollbackTo,
 					},
 				}
+				rp.Context = ctx
 				vms, err := ct.Api.VM.RollbackVM(rp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
-				waitVmTasksFinish(ct, vms.Payload)
+				waitVmTasksFinish(ctx, ct, vms.Payload)
 				resourceVmRead(ctx, d, meta)
 			}
 		}
@@ -1280,11 +1399,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					HostID: basic.HostId,
 				},
 			}
+			uvp.Context = ctx
 			vms, err := ct.Api.VM.StartVM(uvp)
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			err = waitVmTasksFinish(ct, vms.Payload)
+			err = waitVmTasksFinish(ctx, ct, vms.Payload)
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -1296,11 +1416,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 						ID: &id,
 					},
 				}
+				uvp.Context = ctx
 				vms, err := ct.Api.VM.PoweroffVM(uvp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
-				err = waitVmTasksFinish(ct, vms.Payload)
+				err = waitVmTasksFinish(ctx, ct, vms.Payload)
 				if err != nil {
 					return diag.FromErr(err)
 				}
@@ -1311,11 +1432,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 						ID: &id,
 					},
 				}
+				uvp.Context = ctx
 				vms, err := ct.Api.VM.ShutDownVM(uvp)
 				if err != nil {
 					return diag.FromErr(err)
 				}
-				err = waitVmTasksFinish(ct, vms.Payload)
+				err = waitVmTasksFinish(ctx, ct, vms.Payload)
 				if err != nil {
 					return diag.FromErr(err)
 				}
@@ -1327,11 +1449,12 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					ID: &id,
 				},
 			}
+			uvp.Context = ctx
 			vms, err := ct.Api.VM.SuspendVM(uvp)
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			err = waitVmTasksFinish(ct, vms.Payload)
+			err = waitVmTasksFinish(ctx, ct, vms.Payload)
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -1355,20 +1478,21 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			},
 			Data: mvpd,
 		}
+		mvp.Context = ctx
 		vms, err := ct.Api.VM.MigrateVM(mvp)
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		err = waitVmTasksFinish(ct, vms.Payload)
+		err = waitVmTasksFinish(ctx, ct, vms.Payload)
 		if err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
 	// execute vm updation in the last
-	err := ct.GraphqlApi.Mutate(context.Background(), &updateVm, map[string]interface{}{
+	err := ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
 		"data":   updateParams,
-		"effect": UpdateVmEffect{},
+		"effect": updateEffect,
 		"where": VmWhereUniqueInput{
 			"id": d.Id(),
 		},
@@ -1376,7 +1500,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	ct.WaitTaskForResource(d.Id(), "updateVm")
+	ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -1390,6 +1514,7 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 			ID: &id,
 		},
 	}
+	dvp.Context = ctx
 	vms, err := ct.Api.VM.DeleteVM(dvp)
 	if err != nil {
 		return diag.FromErr(err)
@@ -1400,7 +1525,7 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 			taskIds = append(taskIds, *v.TaskID)
 		}
 	}
-	_, err = ct.WaitTasksFinish(taskIds)
+	_, err = ct.WaitTasksFinish(ctx, taskIds)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -1409,14 +1534,14 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	return diags
 }
 
-func waitVmTasksFinish(ct *cloudtower.Client, vms []*models.WithTaskVM) error {
+func waitVmTasksFinish(ctx context.Context, ct *cloudtower.Client, vms []*models.WithTaskVM) error {
 	taskIds := make([]string, 0)
 	for _, v := range vms {
 		if v.TaskID != nil {
 			taskIds = append(taskIds, *v.TaskID)
 		}
 	}
-	_, err := ct.WaitTasksFinish(taskIds)
+	_, err := ct.WaitTasksFinish(ctx, taskIds)
 	return err
 }
 
@@ -1480,10 +1605,12 @@ func expandVmBasicConfig(d *schema.ResourceData) (*VmBasicConfig, error) {
 
 func expandCloudInitConfig(d *schema.ResourceData) (*models.TemplateCloudInit, error) {
 	cloudInit := &models.TemplateCloudInit{}
+	cloudInitConfigured := false
 	defaultPassword, ok := d.GetOk("create_effect.0.cloud_init.0.default_user_password")
 	if ok {
 		defaultPassword := defaultPassword.(string)
 		cloudInit.DefaultUserPassword = &defaultPassword
+		cloudInitConfigured = true
 	}
 	nameservers, ok := d.GetOk("create_effect.0.cloud_init.0.nameservers")
 	if ok {
@@ -1497,6 +1624,7 @@ func expandCloudInitConfig(d *schema.ResourceData) (*models.TemplateCloudInit, e
 			return nil, err
 		}
 		cloudInit.Nameservers = nameservers
+		cloudInitConfigured = true
 	}
 	publicKeys, ok := d.GetOk("create_effect.0.cloud_init.0.public_keys")
 	if ok {
@@ -1510,16 +1638,19 @@ func expandCloudInitConfig(d *schema.ResourceData) (*models.TemplateCloudInit, e
 			return nil, err
 		}
 		cloudInit.PublicKeys = publicKeys
+		cloudInitConfigured = true
 	}
 	hostName, ok := d.GetOk("create_effect.0.cloud_init.0.hostname")
 	if ok {
 		hostName := hostName.(string)
 		cloudInit.Hostname = &hostName
+		cloudInitConfigured = true
 	}
 	userData, ok := d.GetOk("create_effect.0.cloud_init.0.user_data")
 	if ok {
 		userData := userData.(string)
 		cloudInit.UserData = &userData
+		cloudInitConfigured = true
 	}
 	networks, ok := d.GetOk("create_effect.0.cloud_init.0.networks")
 	if ok {
@@ -1533,8 +1664,80 @@ func expandCloudInitConfig(d *schema.ResourceData) (*models.TemplateCloudInit, e
 			return nil, err
 		}
 		cloudInit.Networks = networks
+		cloudInitConfigured = true
 	}
-	return cloudInit, nil
+	if cloudInitConfigured {
+		return cloudInit, nil
+	}
+	return nil, nil
+}
+
+/*
+check if need configure vm tools by checking
+  - hostname
+  - dns_servers
+  - nic ip/subnet/gateway
+*/
+func expandVmToolsConfig(d *schema.ResourceData, vmId string, common *VmCreateCommon) (*ConfigureVmToolsAttributeAfterCreateParams, error) {
+	var toolsConfig ConfigureVmToolsAttributeAfterCreateParams = ConfigureVmToolsAttributeAfterCreateParams{
+		vmId: vmId,
+	}
+	hasVmToolsConfig := false
+
+	hostname, ok := d.GetOk("hostname")
+	if ok {
+		hostname := hostname.(string)
+		toolsConfig.hostname = hostname
+		hasVmToolsConfig = true
+	}
+
+	dnsServers, ok := d.GetOk("dns_servers")
+	if ok {
+		bytes, err := json.Marshal(dnsServers)
+		if err != nil {
+			return nil, err
+		}
+		dnsServers := make([]string, 0)
+		err = json.Unmarshal(bytes, &dnsServers)
+		if err != nil {
+			return nil, err
+		}
+		toolsConfig.dnsServers = strings.Join(dnsServers, ",")
+		hasVmToolsConfig = true
+	}
+
+	if rawGuestOsAccount, ok := d.GetOk("guest_os_account"); ok {
+		var guestOsAccount []*VmGuestOsAccount
+		bytes, err := json.Marshal(rawGuestOsAccount)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(bytes, &guestOsAccount)
+		if err != nil {
+			return nil, err
+		}
+		if len(guestOsAccount) > 0 {
+			toolsConfig.guestOsUsername = guestOsAccount[0].Username
+			toolsConfig.guestOsPassword = guestOsAccount[0].Password
+			hasVmToolsConfig = true
+		}
+	}
+
+	if common != nil && common.vmNics != nil {
+		for _, nic := range common.vmNics {
+			if nic.IPAddress != nil {
+				hasVmToolsConfig = true
+				toolsConfig.nics = common.vmNics
+				break
+			}
+		}
+	}
+
+	if !hasVmToolsConfig {
+		return nil, nil
+	}
+
+	return &toolsConfig, nil
 }
 
 type VmStatusConfig struct {
@@ -1568,6 +1771,7 @@ func readVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) 
 			ID: &id,
 		},
 	}
+	gcp.Context = ctx
 	vms, err := ct.Api.VM.GetVms(gcp)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1589,7 +1793,9 @@ func readVmNics(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Clie
 				ID: &id,
 			},
 		},
+		OrderBy: models.NewVMNicOrderByInput(models.VMNicOrderByInputOrderASC),
 	}
+	gp.Context = ctx
 	vmNics, err := ct.Api.VMNic.GetVMNics(gp)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1610,6 +1816,7 @@ func readVmDisks(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Cli
 			CloudInitImagePathNot: nil,
 		},
 	}
+	gp.Context = ctx
 	vmDisks, err := ct.Api.VMDisk.GetVMDisks(gp)
 	if err != nil {
 		return nil, nil, diag.FromErr(err)
@@ -1649,6 +1856,7 @@ func readVmDisksFromTemplate(ctx context.Context, d *schema.ResourceData, ct *cl
 			ID: &cloneFromTemplate,
 		},
 	}
+	gp.Context = ctx
 	vmTemplates, err := ct.Api.VMTemplate.GetVMTemplates(gp)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1666,6 +1874,7 @@ func readVmDisksFromContentLibraryTemplate(ctx context.Context, d *schema.Resour
 			ID: &cloneFromTemplate,
 		},
 	}
+	gcp.Context = ctx
 	contentLibraryVmTemplates, err := ct.Api.ContentLibraryVMTemplate.GetContentLibraryVMTemplates(gcp)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1695,6 +1904,7 @@ func readVmDisksFromSnapshot(ctx context.Context, d *schema.ResourceData, ct *cl
 			ID: &cloneFromTemplate,
 		},
 	}
+	gp.Context = ctx
 	snapshots, err := ct.Api.VMSnapshot.GetVMSnapshots(gp)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1703,6 +1913,7 @@ func readVmDisksFromSnapshot(ctx context.Context, d *schema.ResourceData, ct *cl
 	}
 	return snapshots.Payload[0].VMDisks, nil
 }
+
 func readCdRoms(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.VMDisk, diag.Diagnostics) {
 	id := d.Id()
 	gp := vm_disk.NewGetVMDisksParams()
@@ -1715,24 +1926,12 @@ func readCdRoms(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Clie
 			},
 		},
 	}
+	gp.Context = ctx
 	cdRoms, err := ct.Api.VMDisk.GetVMDisks(gp)
-
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
 	return cdRoms.Payload, nil
-}
-
-func derefAny(v interface{}, fallback interface{}) interface{} {
-	ptr := reflect.ValueOf(v)
-	if ptr.Kind() == reflect.Ptr {
-		if ptr.IsNil() {
-			return fallback
-		}
-		val := ptr.Elem().Interface()
-		return val
-	}
-	return v
 }
 
 type VmCreateCommon struct {
@@ -1749,7 +1948,7 @@ type VmCreateCommon struct {
 
 // preprocess common create params for vm create from schema
 // including vm basic, cluster, status, guest_os_type, disks and nics
-func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) (*VmCreateCommon, diag.Diagnostics) {
+func preprocessVmCreateCommon(d *schema.ResourceData) (*VmCreateCommon, diag.Diagnostics) {
 	basic, err := expandVmBasicConfig(d)
 	if err != nil {
 		return nil, diag.FromErr(err)
@@ -1873,7 +2072,7 @@ func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *c
 				// Index:      &boot,
 			}
 			mountDisks = append(mountDisks, params)
-		} else if disk.VmVolume != nil && len(disk.VmVolume) == 1 {
+		} else if len(disk.VmVolume) == 1 {
 			volume := disk.VmVolume[0]
 			params := &models.MountNewCreateDisksParams{
 				Boot: &boot,
@@ -1883,7 +2082,6 @@ func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *c
 					Name:             &volume.Name,
 					Size:             &volume.Size,
 				},
-				// Index: &boot,
 			}
 			if volume.OriginPath != "" {
 				params.VMVolume.Path = &volume.OriginPath
@@ -1905,7 +2103,7 @@ func preprocessVmCreateCommon(ctx context.Context, d *schema.ResourceData, ct *c
 }
 
 func rebuildVmFromSnapshot(rebuildFrom string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
-	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	common, diags := preprocessVmCreateCommon(d)
 	if diags != nil {
 		return nil, diags
 	}
@@ -1955,16 +2153,28 @@ func rebuildVmFromSnapshot(rebuildFrom string, ctx context.Context, d *schema.Re
 			RebuildFromSnapshotID: &rebuildFrom,
 		},
 	}
+	rp.Context = ctx
 	response, err := ct.Api.VM.RebuildVM(rp)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
-
+	err = waitVmTasksFinish(ctx, ct, response.Payload)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	toolsConfig, err := expandVmToolsConfig(d, *response.Payload[0].Data.ID, common)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = configureVmToolsAttributeAfterCreate(ctx, ct, toolsConfig)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
 	return response.Payload, nil
 }
 
 func cloneVmFromSourceVm(cloneFrom string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
-	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	common, diags := preprocessVmCreateCommon(d)
 	if diags != nil {
 		return nil, diags
 	}
@@ -2022,7 +2232,20 @@ func cloneVmFromSourceVm(cloneFrom string, ctx context.Context, d *schema.Resour
 			SrcVMID:     &cloneFrom,
 		},
 	}
+	cp.Context = ctx
 	response, err := ct.Api.VM.CloneVM(cp)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = waitVmTasksFinish(ctx, ct, response.Payload)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	toolsConfig, err := expandVmToolsConfig(d, *response.Payload[0].Data.ID, common)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = configureVmToolsAttributeAfterCreate(ctx, ct, toolsConfig)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
@@ -2030,7 +2253,7 @@ func cloneVmFromSourceVm(cloneFrom string, ctx context.Context, d *schema.Resour
 }
 
 func cloneVmFromVmTemplate(cloneFromTemplate string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
-	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	common, diags := preprocessVmCreateCommon(d)
 	if diags != nil {
 		return nil, diags
 	}
@@ -2099,7 +2322,20 @@ func cloneVmFromVmTemplate(cloneFromTemplate string, ctx context.Context, d *sch
 			},
 		},
 	}
+	cvft.Context = ctx
 	response, err := ct.Api.VM.CreateVMFromTemplate(cvft)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = waitVmTasksFinish(ctx, ct, response.Payload)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	toolsConfig, err := expandVmToolsConfig(d, *response.Payload[0].Data.ID, common)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = configureVmToolsAttributeAfterCreate(ctx, ct, toolsConfig)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
@@ -2107,7 +2343,7 @@ func cloneVmFromVmTemplate(cloneFromTemplate string, ctx context.Context, d *sch
 }
 
 func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string, ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
-	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	common, diags := preprocessVmCreateCommon(d)
 	if diags != nil {
 		return nil, diags
 	}
@@ -2176,7 +2412,20 @@ func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string,
 			},
 		},
 	}
+	cvft.Context = ctx
 	response, err := ct.Api.VM.CreateVMFromContentLibraryTemplate(cvft)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = waitVmTasksFinish(ctx, ct, response.Payload)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	toolsConfig, err := expandVmToolsConfig(d, *response.Payload[0].Data.ID, common)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	err = configureVmToolsAttributeAfterCreate(ctx, ct, toolsConfig)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
@@ -2184,7 +2433,7 @@ func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string,
 }
 
 func createBlankVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.Client) ([]*models.WithTaskVM, diag.Diagnostics) {
-	common, diags := preprocessVmCreateCommon(ctx, d, ct)
+	common, diags := preprocessVmCreateCommon(d)
 	if diags != nil {
 		return nil, diags
 	}
@@ -2211,6 +2460,35 @@ func createBlankVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.C
 	}
 	if len(missingFields) > 0 {
 		return nil, diag.Errorf("Simple create vm need more config, missing fields: %v", missingFields)
+	}
+	vmToolsParams := make([]string, 0)
+	if len(common.vmNics) > 0 {
+		for idx, nic := range common.vmNics {
+			if nic.IPAddress != nil {
+				vmToolsParams = append(vmToolsParams, fmt.Sprintf("vm_nic.[%d].ip_address", idx))
+			}
+			if nic.Gateway != nil {
+				vmToolsParams = append(vmToolsParams, fmt.Sprintf("vm_nic.[%d].gateway", idx))
+			}
+			if nic.SubnetMask != nil {
+				vmToolsParams = append(vmToolsParams, fmt.Sprintf("vm_nic.[%d].netmask", idx))
+			}
+		}
+	}
+	if _, ok := d.GetOk("guest_os_password"); ok {
+		vmToolsParams = append(vmToolsParams, "guest_os_password")
+	}
+	if _, ok := d.GetOk("hostname"); ok {
+		vmToolsParams = append(vmToolsParams, "hostname")
+	}
+	if _, ok := d.GetOk("dns_servers"); ok {
+		vmToolsParams = append(vmToolsParams, "dns_servers")
+	}
+	if _, ok := d.GetOk("guest_os_account"); ok {
+		vmToolsParams = append(vmToolsParams, "guest_os_account")
+	}
+	if len(vmToolsParams) > 0 {
+		return nil, diag.Errorf("Create blank VM with vm tools specific config is not supported, need vm tools to be installed, forbidden fields: %v", vmToolsParams)
 	}
 	if common.basic.CpuCores == nil {
 		var core int32 = 1
@@ -2241,9 +2519,130 @@ func createBlankVm(ctx context.Context, d *schema.ResourceData, ct *cloudtower.C
 		},
 		VMNics: common.vmNics,
 	}}
+	cvp.Context = ctx
 	response, err := ct.Api.VM.CreateVM(cvp)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
+	err = waitVmTasksFinish(ctx, ct, response.Payload)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
 	return response.Payload, nil
+}
+
+type ConfigureVmToolsAttributeAfterCreateParams struct {
+	vmId              string
+	nics              []*models.VMNicParams
+	hostname          string
+	dnsServers        string
+	containsCloudInit bool
+	guestOsUsername   string
+	guestOsPassword   string
+}
+
+func configureVmToolsAttributeAfterCreate(ctx context.Context, ct *cloudtower.Client, params *ConfigureVmToolsAttributeAfterCreateParams) error {
+	if params == nil {
+		return nil
+	}
+	stopFunc, err := helper.StartVmTemporary(ctx, ct, params.vmId)
+	if err != nil {
+		return err
+	}
+	defer stopFunc()
+	resp, err := helper.WaitVmToolsRunning(ctx, ct, params.vmId)
+	if err != nil {
+		return err
+	}
+	if params.containsCloudInit {
+		// cloud init may take some times to do configure or reboot, need wait cloudinit finishing
+		// we dont have way to detect if cloud init is run or finished, wait for a while.
+		time.Sleep(2 * time.Minute)
+	} else {
+		// if no cloud init data is injected,
+		time.Sleep(1 * time.Minute)
+	}
+	vmNicParams := vm_nic.NewGetVMNicsParams()
+	vmNicParams.RequestBody = &models.GetVMNicsRequestBody{
+		Where: &models.VMNicWhereInput{
+			VM: &models.VMWhereInput{
+				ID: resp.ID,
+			},
+		},
+		OrderBy: models.NewVMNicOrderByInput(models.VMNicOrderByInputOrderASC),
+	}
+	originalNics, err := utils.RetryWithExponentialBackoff(ctx, func() (*vm_nic.GetVMNicsOK, error) {
+		vmNicParams.Context = ctx
+		return ct.Api.VMNic.GetVMNics(vmNicParams)
+	}, utils.RetryWithExponentialBackoffOptions{})
+	if err != nil {
+		return err
+	}
+
+	var updateParams VmUpdateInput = VmUpdateInput{
+		Hostname:   params.hostname,
+		DnsServers: params.dnsServers,
+	}
+
+	var updateEffect UpdateVmEffect = UpdateVmEffect{
+		GuestOsUsername: params.guestOsUsername,
+		GuestOsPassword: params.guestOsPassword,
+	}
+
+	if len(params.nics) > 0 {
+		updateParams.VmNics = &VmNicStruct{
+			Create: make([]VmNicCreate, 0),
+			Delete: make([]VmNicDelete, 0),
+		}
+		for _, nic := range originalNics.Payload {
+			updateParams.VmNics.Delete = append(updateParams.VmNics.Delete, VmNicDelete{
+				Id: *nic.ID,
+			})
+			if nic.Order == nil || params.nics[*nic.Order] == nil {
+				continue
+			}
+			newNic := params.nics[*nic.Order]
+			newParams := VmNicCreate{
+				Enabled:    *nic.Enabled,
+				Gateway:    *newNic.Gateway,
+				IPAddress:  *newNic.IPAddress,
+				SubnetMask: *newNic.SubnetMask,
+				MacAddress: *nic.MacAddress,
+				LocalId:    "",
+				Model:      *nic.Model,
+				IpType:     "STATIC",
+			}
+			if nic.Nic != nil {
+				newParams.Nic = &ConnectStruct{
+					Connect: &ConnectConnect{
+						Id: *nic.Nic.ID,
+					},
+				}
+			}
+			if nic.Vlan != nil {
+				newParams.Vlan = &ConnectStruct{
+					Connect: &ConnectConnect{
+						Id: *nic.Vlan.ID,
+					},
+				}
+			}
+			updateParams.VmNics.Create = append(updateParams.VmNics.Create, newParams)
+		}
+	}
+
+	err = ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+		"data":   updateParams,
+		"effect": updateEffect,
+		"where": VmWhereUniqueInput{
+			"id": params.vmId,
+		},
+	}, graphql.OperationName("updateVm"))
+	if err != nil {
+		return err
+	}
+	_, err = ct.WaitTaskForResource(ctx, params.vmId, "updateVm")
+	if err != nil {
+		return err
+	}
+	return nil
 }

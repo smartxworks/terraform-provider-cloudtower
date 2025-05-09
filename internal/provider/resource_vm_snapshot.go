@@ -186,7 +186,7 @@ func resourceVmSnapshotCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(err)
 	}
 	d.SetId(*snapshots.Payload[0].Data.ID)
-	_, err = ct.WaitTasksFinish([]string{*snapshots.Payload[0].TaskID})
+	_, err = ct.WaitTasksFinish(ctx, []string{*snapshots.Payload[0].TaskID})
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -303,7 +303,7 @@ func resourceVmSnapshotDelete(ctx context.Context, d *schema.ResourceData, meta 
 			taskIds = append(taskIds, *c.TaskID)
 		}
 	}
-	_, err = ct.WaitTasksFinish(taskIds)
+	_, err = ct.WaitTasksFinish(ctx, taskIds)
 	if err != nil {
 		return diag.FromErr(err)
 	}
