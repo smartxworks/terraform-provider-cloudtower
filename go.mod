@@ -2,8 +2,6 @@ module github.com/hashicorp/terraform-provider-cloudtower
 
 go 1.23.4
 
-toolchain go1.23.4
-
 require (
 	github.com/go-openapi/runtime v0.28.0
 	github.com/go-openapi/strfmt v0.23.0

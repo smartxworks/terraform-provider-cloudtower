@@ -1,4 +1,4 @@
-version = $(file < VERSION)
+version = $(shell cat VERSION)
 GOOS =
 GOARCH = 
 exeExtension =

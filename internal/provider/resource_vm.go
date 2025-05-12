@@ -907,6 +907,8 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	originalVm, _ := readVm(ctx, d, ct)
 	var updateParams VmUpdateInput = VmUpdateInput{}
 	var updateEffect UpdateVmEffect = UpdateVmEffect{}
+	var updateDnsServersParams VmUpdateInput = VmUpdateInput{}
+	var needUpdateDnsServers bool = false
 	// handle update data first, if there is error in data, will not execute other mutation
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
 		basic, err := expandVmBasicConfig(d)
@@ -1014,7 +1016,8 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				updateParams.Hostname = toolConfig.hostname
 			}
 			if d.HasChange("dns_servers") && toolConfig.dnsServers != "" {
-				updateParams.DnsServers = toolConfig.dnsServers
+				updateDnsServersParams.DnsServers = toolConfig.dnsServers
+				needUpdateDnsServers = true
 			}
 			if d.HasChanges("guest_os_account.0.password", "guest_os_account.0.username") {
 				updateEffect.GuestOsUsername = toolConfig.guestOsUsername
@@ -1490,17 +1493,31 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	// execute vm updation in the last
-	err := ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-		"data":   updateParams,
-		"effect": updateEffect,
-		"where": VmWhereUniqueInput{
-			"id": d.Id(),
-		},
-	}, graphql.OperationName("updateVm"))
+	_, err := utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+		return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+			"data":   updateParams,
+			"effect": updateEffect,
+			"where": VmWhereUniqueInput{
+				"id": d.Id(),
+			},
+		}, graphql.OperationName("updateVm"))
+	}, utils.RetryWithExponentialBackoffOptions{})
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+	if needUpdateDnsServers {
+		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+				"data":   updateDnsServersParams,
+				"effect": UpdateVmEffect{},
+			}, graphql.OperationName("updateVm"))
+		}, utils.RetryWithExponentialBackoffOptions{})
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+	}
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -2580,8 +2597,7 @@ func configureVmToolsAttributeAfterCreate(ctx context.Context, ct *cloudtower.Cl
 	}
 
 	var updateParams VmUpdateInput = VmUpdateInput{
-		Hostname:   params.hostname,
-		DnsServers: params.dnsServers,
+		Hostname: params.hostname,
 	}
 
 	var updateEffect UpdateVmEffect = UpdateVmEffect{
@@ -2630,19 +2646,40 @@ func configureVmToolsAttributeAfterCreate(ctx context.Context, ct *cloudtower.Cl
 		}
 	}
 
-	err = ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-		"data":   updateParams,
-		"effect": updateEffect,
-		"where": VmWhereUniqueInput{
-			"id": params.vmId,
-		},
-	}, graphql.OperationName("updateVm"))
+	_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+		return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+			"data":   updateParams,
+			"effect": updateEffect,
+			"where": VmWhereUniqueInput{
+				"id": params.vmId,
+			},
+		}, graphql.OperationName("updateVm"))
+	}, utils.RetryWithExponentialBackoffOptions{})
 	if err != nil {
 		return err
 	}
 	_, err = ct.WaitTaskForResource(ctx, params.vmId, "updateVm")
 	if err != nil {
 		return err
+	}
+	// as vmtools bug, dns_server should be handle individually
+	if params.dnsServers != "" {
+		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+				"data":   VmUpdateInput{DnsServers: params.dnsServers},
+				"effect": UpdateVmEffect{},
+				"where": VmWhereUniqueInput{
+					"id": params.vmId,
+				},
+			}, graphql.OperationName("updateVm"))
+		}, utils.RetryWithExponentialBackoffOptions{})
+		if err != nil {
+			return err
+		}
+		_, err = ct.WaitTaskForResource(ctx, params.vmId, "updateVm")
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
