@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cty/cty"
@@ -105,6 +107,10 @@ func resourceVm() *schema.Resource {
 				Type:        schema.TypeBool,
 				Description: "force VM's status change, will apply when power off or restart",
 				Optional:    true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// always suppress force_status_change field
+					return true
+				},
 			},
 			"disk": {
 				Type:        schema.TypeList,
@@ -907,8 +913,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	originalVm, _ := readVm(ctx, d, ct)
 	var updateParams VmUpdateInput = VmUpdateInput{}
 	var updateEffect UpdateVmEffect = UpdateVmEffect{}
+	var updateVmToolsAttributeParams VmUpdateInput = VmUpdateInput{}
 	var updateDnsServersParams VmUpdateInput = VmUpdateInput{}
 	var needUpdateDnsServers bool = false
+	var needUpdateVmToolsAttribute bool = false
 	// handle update data first, if there is error in data, will not execute other mutation
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
 		basic, err := expandVmBasicConfig(d)
@@ -1013,7 +1021,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		if toolConfig != nil {
 			if d.HasChange("hostname") && toolConfig.hostname != "" {
-				updateParams.Hostname = toolConfig.hostname
+				updateVmToolsAttributeParams.Hostname = toolConfig.hostname
 			}
 			if d.HasChange("dns_servers") && toolConfig.dnsServers != "" {
 				updateDnsServersParams.DnsServers = toolConfig.dnsServers
@@ -1023,6 +1031,134 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 				updateEffect.GuestOsUsername = toolConfig.guestOsUsername
 				updateEffect.GuestOsPassword = toolConfig.guestOsPassword
 			}
+			needUpdateVmToolsAttribute = true
+		}
+	}
+
+	var statusChangeFunc func() error
+
+	if d.HasChange("status") {
+		basic, err := expandVmBasicConfig(d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		status, err := expandVmStatusConfig(d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		switch *status.Status {
+		case models.VMStatusRUNNING:
+			switch *originalVm.Status {
+			case models.VMStatusSTOPPED:
+				statusChangeFunc = func() error {
+					uvp := vm.NewStartVMParams()
+					uvp.RequestBody = &models.VMStartParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+						Data: &models.VMStartParamsData{
+							HostID: basic.HostId,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := ct.Api.VM.StartVM(uvp)
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			case models.VMStatusSUSPENDED:
+				statusChangeFunc = func() error {
+					uvp := vm.NewResumeVMParams()
+					uvp.RequestBody = &models.VMOperateParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := ct.Api.VM.ResumeVM(uvp)
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			default:
+				return diag.FromErr(fmt.Errorf("vm status is %s, cannot start vm", *originalVm.Status))
+			}
+		case models.VMStatusSTOPPED:
+			switch *originalVm.Status {
+			case models.VMStatusRUNNING:
+				statusChangeFunc = func() error {
+					if status.Force {
+						uvp := vm.NewPoweroffVMParams()
+						uvp.RequestBody = &models.VMOperateParams{
+							Where: &models.VMWhereInput{
+								ID: &id,
+							},
+						}
+						uvp.Context = ctx
+						vms, err := ct.Api.VM.PoweroffVM(uvp)
+						if err != nil {
+							return err
+						}
+						err = waitVmTasksFinish(ctx, ct, vms.Payload)
+						if err != nil {
+							return err
+						}
+					} else {
+						uvp := vm.NewShutDownVMParams()
+						uvp.RequestBody = &models.VMOperateParams{
+							Where: &models.VMWhereInput{
+								ID: &id,
+							},
+						}
+						uvp.Context = ctx
+						vms, err := ct.Api.VM.ShutDownVM(uvp)
+						if err != nil {
+							return err
+						}
+						err = waitVmTasksFinish(ctx, ct, vms.Payload)
+						if err != nil {
+							return err
+						}
+					}
+					return nil
+				}
+			default:
+				return diag.FromErr(fmt.Errorf("vm status is %s, cannot power off vm", *originalVm.Status))
+			}
+		case models.VMStatusSUSPENDED:
+			switch *originalVm.Status {
+			case models.VMStatusRUNNING:
+				statusChangeFunc = func() error {
+					uvp := vm.NewSuspendVMParams()
+					uvp.RequestBody = &models.VMOperateParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := ct.Api.VM.SuspendVM(uvp)
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			}
+		default:
+			return diag.FromErr(fmt.Errorf("vm status is %s, cannot suspend vm", *originalVm.Status))
 		}
 	}
 
@@ -1076,15 +1212,33 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 					},
 				},
 			}
+			if !needUpdateVmToolsAttribute && (n.IPAddress != nil || n.Gateway != nil || n.SubnetMask != nil) {
+				// to configure vm ip, need boot up vm
+				needUpdateVmToolsAttribute = true
+			}
 			if n.IPAddress != nil {
 				nicToCreate.IpType = "STATIC"
 			}
 			nicsToCreate = append(nicsToCreate, nicToCreate)
 		}
-		updateParams.VmNics = &VmNicStruct{
-			Create: nicsToCreate,
-			Delete: nicsToDelete,
+		if needUpdateVmToolsAttribute {
+			updateVmToolsAttributeParams.VmNics = &VmNicStruct{
+				Create: nicsToCreate,
+				Delete: nicsToDelete,
+			}
+		} else {
+			updateParams.VmNics = &VmNicStruct{
+				Create: nicsToCreate,
+				Delete: nicsToDelete,
+			}
 		}
+
+	}
+
+	if needUpdateVmToolsAttribute &&
+		(*originalVm.Status != models.VMStatusSTOPPED &&
+			*originalVm.Status != models.VMStatusRUNNING) {
+		return diag.FromErr(fmt.Errorf("vm status is %s, cannot update vm tools related attributes, please start vm first", *originalVm.Status))
 	}
 
 	if d.HasChanges("cd_rom", "disk") {
@@ -1381,88 +1535,6 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		}
 	}
-	// change vm status first as some change could not make in some status
-	if d.HasChange("status") {
-		basic, err := expandVmBasicConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		status, err := expandVmStatusConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		switch *status.Status {
-		case models.VMStatusRUNNING:
-			uvp := vm.NewStartVMParams()
-			uvp.RequestBody = &models.VMStartParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-				Data: &models.VMStartParamsData{
-					HostID: basic.HostId,
-				},
-			}
-			uvp.Context = ctx
-			vms, err := ct.Api.VM.StartVM(uvp)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ctx, ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		case models.VMStatusSTOPPED:
-			if status.Force {
-				uvp := vm.NewPoweroffVMParams()
-				uvp.RequestBody = &models.VMOperateParams{
-					Where: &models.VMWhereInput{
-						ID: &id,
-					},
-				}
-				uvp.Context = ctx
-				vms, err := ct.Api.VM.PoweroffVM(uvp)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				err = waitVmTasksFinish(ctx, ct, vms.Payload)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-			} else {
-				uvp := vm.NewShutDownVMParams()
-				uvp.RequestBody = &models.VMOperateParams{
-					Where: &models.VMWhereInput{
-						ID: &id,
-					},
-				}
-				uvp.Context = ctx
-				vms, err := ct.Api.VM.ShutDownVM(uvp)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				err = waitVmTasksFinish(ctx, ct, vms.Payload)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-			}
-		case models.VMStatusSUSPENDED:
-			uvp := vm.NewSuspendVMParams()
-			uvp.RequestBody = &models.VMOperateParams{
-				Where: &models.VMWhereInput{
-					ID: &id,
-				},
-			}
-			uvp.Context = ctx
-			vms, err := ct.Api.VM.SuspendVM(uvp)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			err = waitVmTasksFinish(ctx, ct, vms.Payload)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
-	}
 
 	// then migrate the vm if needed
 	if d.HasChange("host_id") {
@@ -1492,7 +1564,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
-	// execute vm updation in the last
+	// execute vm basic updation in the last
 	_, err := utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
 		return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
 			"data":   updateParams,
@@ -1502,21 +1574,90 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			},
 		}, graphql.OperationName("updateVm"))
 	}, utils.RetryWithExponentialBackoffOptions{})
+
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
-	if needUpdateDnsServers {
-		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
-			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-				"data":   updateDnsServersParams,
-				"effect": UpdateVmEffect{},
-			}, graphql.OperationName("updateVm"))
-		}, utils.RetryWithExponentialBackoffOptions{})
+
+	if needUpdateVmToolsAttribute {
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		var outerErr error
+		go func() {
+			defer wg.Done()
+			if *originalVm.Status == models.VMStatusSTOPPED {
+				stopFunc, err := helper.StartVmTemporary(ctx, ct, d.Id())
+				if err != nil {
+					outerErr = err
+					return
+				}
+				defer func() {
+					if stopFunc != nil {
+						if outerErr != nil {
+							err := stopFunc()
+							if err != nil {
+								outerErr = errors.Join(outerErr, err)
+							}
+						} else {
+							err := stopFunc()
+							if err != nil {
+								outerErr = errors.Join(outerErr, err)
+							}
+						}
+					}
+				}()
+			}
+			_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+				return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+					"data":   updateVmToolsAttributeParams,
+					"effect": updateEffect,
+					"where": VmWhereUniqueInput{
+						"id": d.Id(),
+					},
+				}, graphql.OperationName("updateVm"))
+			}, utils.RetryWithExponentialBackoffOptions{})
+			if err != nil {
+				outerErr = err
+				return
+			}
+			_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+			if err != nil {
+				outerErr = err
+				return
+			}
+			if needUpdateDnsServers {
+				_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+					return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+						"data":   updateDnsServersParams,
+						"effect": UpdateVmEffect{},
+						"where": VmWhereUniqueInput{
+							"id": d.Id(),
+						},
+					}, graphql.OperationName("updateVm"))
+				}, utils.RetryWithExponentialBackoffOptions{})
+				if err != nil {
+					outerErr = err
+					return
+				}
+				_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+				if err != nil {
+					outerErr = err
+					return
+				}
+			}
+		}()
+		wg.Wait()
+		if outerErr != nil {
+			return diag.FromErr(outerErr)
+		}
+	}
+	// change vm status to desired state
+	if statusChangeFunc != nil {
+		err := statusChangeFunc()
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
 	}
 	return resourceVmRead(ctx, d, meta)
 }
@@ -2662,7 +2803,8 @@ func configureVmToolsAttributeAfterCreate(ctx context.Context, ct *cloudtower.Cl
 	if err != nil {
 		return err
 	}
-	// as vmtools bug, dns_server should be handle individually
+
+	// as vmtools bug, dns_server should be handled individually
 	if params.dnsServers != "" {
 		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
 			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
@@ -2673,6 +2815,25 @@ func configureVmToolsAttributeAfterCreate(ctx context.Context, ct *cloudtower.Cl
 				},
 			}, graphql.OperationName("updateVm"))
 		}, utils.RetryWithExponentialBackoffOptions{})
+		if err != nil {
+			return err
+		}
+		_, err = ct.WaitTaskForResource(ctx, params.vmId, "updateVm")
+		if err != nil {
+			return err
+		}
+	}
+
+	if params.hostname != "" {
+		// reboot to make hostname in use
+		rp := vm.NewRestartVMParams()
+		rp.RequestBody = &models.VMOperateParams{
+			Where: &models.VMWhereInput{
+				ID: &params.vmId,
+			},
+		}
+		rp.Context = ctx
+		_, err := ct.Api.VM.RestartVM(rp)
 		if err != nil {
 			return err
 		}
