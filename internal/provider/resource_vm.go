@@ -3,11 +3,9 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cty/cty"
@@ -752,7 +750,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 	if count >= 2 {
-		return diag.FromErr(fmt.Errorf("can only set one create effect"))
+		return diag.Errorf("can only set one create effect")
 	} else if rebuildFrom != "" {
 		vms, diags = rebuildVmFromSnapshot(rebuildFrom, ctx, d, ct)
 	} else if cloneFrom != "" {
@@ -823,6 +821,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		dnsServers := make([]string, 0)
 		if v.DNSServers != nil && *v.DNSServers != "" {
 			dnsServers = strings.Split(*v.DNSServers, ",")
+			sort.Strings(dnsServers)
 		}
 		if err := d.Set("dns_servers", dnsServers); err != nil {
 			return diag.FromErr(err)
@@ -911,15 +910,20 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	ct := meta.(*cloudtower.Client)
 	id := d.Id()
 	originalVm, _ := readVm(ctx, d, ct)
+
+	// validation and construct update params
 	var updateParams VmUpdateInput = VmUpdateInput{}
 	var updateEffect UpdateVmEffect = UpdateVmEffect{}
 	var updateVmToolsAttributeParams VmUpdateInput = VmUpdateInput{}
 	var updateDnsServersParams VmUpdateInput = VmUpdateInput{}
 	var needUpdateDnsServers bool = false
 	var needUpdateVmToolsAttribute bool = false
+
+	var basic *VmBasicConfig = nil
 	// handle update data first, if there is error in data, will not execute other mutation
 	if d.HasChanges("name", "vcpu", "memory", "description", "ha", "cpu_cores", "cpu_sockets") {
-		basic, err := expandVmBasicConfig(d)
+		var err error
+		basic, err = expandVmBasicConfig(d)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -1035,133 +1039,6 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
-	var statusChangeFunc func() error
-
-	if d.HasChange("status") {
-		basic, err := expandVmBasicConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		status, err := expandVmStatusConfig(d)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		switch *status.Status {
-		case models.VMStatusRUNNING:
-			switch *originalVm.Status {
-			case models.VMStatusSTOPPED:
-				statusChangeFunc = func() error {
-					uvp := vm.NewStartVMParams()
-					uvp.RequestBody = &models.VMStartParams{
-						Where: &models.VMWhereInput{
-							ID: &id,
-						},
-						Data: &models.VMStartParamsData{
-							HostID: basic.HostId,
-						},
-					}
-					uvp.Context = ctx
-					vms, err := ct.Api.VM.StartVM(uvp)
-					if err != nil {
-						return err
-					}
-					err = waitVmTasksFinish(ctx, ct, vms.Payload)
-					if err != nil {
-						return err
-					}
-					return nil
-				}
-			case models.VMStatusSUSPENDED:
-				statusChangeFunc = func() error {
-					uvp := vm.NewResumeVMParams()
-					uvp.RequestBody = &models.VMOperateParams{
-						Where: &models.VMWhereInput{
-							ID: &id,
-						},
-					}
-					uvp.Context = ctx
-					vms, err := ct.Api.VM.ResumeVM(uvp)
-					if err != nil {
-						return err
-					}
-					err = waitVmTasksFinish(ctx, ct, vms.Payload)
-					if err != nil {
-						return err
-					}
-					return nil
-				}
-			default:
-				return diag.FromErr(fmt.Errorf("vm status is %s, cannot start vm", *originalVm.Status))
-			}
-		case models.VMStatusSTOPPED:
-			switch *originalVm.Status {
-			case models.VMStatusRUNNING:
-				statusChangeFunc = func() error {
-					if status.Force {
-						uvp := vm.NewPoweroffVMParams()
-						uvp.RequestBody = &models.VMOperateParams{
-							Where: &models.VMWhereInput{
-								ID: &id,
-							},
-						}
-						uvp.Context = ctx
-						vms, err := ct.Api.VM.PoweroffVM(uvp)
-						if err != nil {
-							return err
-						}
-						err = waitVmTasksFinish(ctx, ct, vms.Payload)
-						if err != nil {
-							return err
-						}
-					} else {
-						uvp := vm.NewShutDownVMParams()
-						uvp.RequestBody = &models.VMOperateParams{
-							Where: &models.VMWhereInput{
-								ID: &id,
-							},
-						}
-						uvp.Context = ctx
-						vms, err := ct.Api.VM.ShutDownVM(uvp)
-						if err != nil {
-							return err
-						}
-						err = waitVmTasksFinish(ctx, ct, vms.Payload)
-						if err != nil {
-							return err
-						}
-					}
-					return nil
-				}
-			default:
-				return diag.FromErr(fmt.Errorf("vm status is %s, cannot power off vm", *originalVm.Status))
-			}
-		case models.VMStatusSUSPENDED:
-			switch *originalVm.Status {
-			case models.VMStatusRUNNING:
-				statusChangeFunc = func() error {
-					uvp := vm.NewSuspendVMParams()
-					uvp.RequestBody = &models.VMOperateParams{
-						Where: &models.VMWhereInput{
-							ID: &id,
-						},
-					}
-					uvp.Context = ctx
-					vms, err := ct.Api.VM.SuspendVM(uvp)
-					if err != nil {
-						return err
-					}
-					err = waitVmTasksFinish(ctx, ct, vms.Payload)
-					if err != nil {
-						return err
-					}
-					return nil
-				}
-			}
-		default:
-			return diag.FromErr(fmt.Errorf("vm status is %s, cannot suspend vm", *originalVm.Status))
-		}
-	}
-
 	if d.HasChange("nic") {
 		// delete all previous vm nic
 		nicsToDelete := make([]VmNicDelete, 0)
@@ -1233,12 +1110,6 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			}
 		}
 
-	}
-
-	if needUpdateVmToolsAttribute &&
-		(*originalVm.Status != models.VMStatusSTOPPED &&
-			*originalVm.Status != models.VMStatusRUNNING) {
-		return diag.FromErr(fmt.Errorf("vm status is %s, cannot update vm tools related attributes, please start vm first", *originalVm.Status))
 	}
 
 	if d.HasChanges("cd_rom", "disk") {
@@ -1508,6 +1379,164 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 			Delete: diskToDelete,
 		}
 	}
+
+	var statusChangeFunc func() error
+	var runStatusChangeFirst bool = false
+
+	if d.HasChange("status") {
+		status, err := expandVmStatusConfig(d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		switch *status.Status {
+		case models.VMStatusRUNNING:
+			switch *originalVm.Status {
+			case models.VMStatusSTOPPED:
+				runStatusChangeFirst = true
+				statusChangeFunc = func() error {
+					if basic == nil {
+						basic, err = expandVmBasicConfig(d)
+						if err != nil {
+							return err
+						}
+					}
+					hostId := basic.HostId
+					if hostId == nil {
+						hostId = originalVm.Host.ID
+					}
+					uvp := vm.NewStartVMParams()
+					uvp.RequestBody = &models.VMStartParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+						Data: &models.VMStartParamsData{
+							HostID: basic.HostId,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := utils.RetryWithExponentialBackoff(ctx, func() (*vm.StartVMOK, error) {
+						return ct.Api.VM.StartVM(uvp)
+					}, utils.RetryWithExponentialBackoffOptions{})
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			case models.VMStatusSUSPENDED:
+				runStatusChangeFirst = true
+				statusChangeFunc = func() error {
+					uvp := vm.NewResumeVMParams()
+					uvp.RequestBody = &models.VMOperateParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := utils.RetryWithExponentialBackoff(ctx, func() (*vm.ResumeVMOK, error) {
+						return ct.Api.VM.ResumeVM(uvp)
+					}, utils.RetryWithExponentialBackoffOptions{})
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			case models.VMStatusRUNNING:
+				// do nothing
+			default:
+				// forbidden status change to suspended or deleted vm
+				return diag.Errorf("vm status is %s, cannot start vm", *originalVm.Status)
+			}
+		case models.VMStatusSTOPPED:
+			switch *originalVm.Status {
+			case models.VMStatusRUNNING:
+				runStatusChangeFirst = false
+				statusChangeFunc = func() error {
+					if status.Force {
+						uvp := vm.NewPoweroffVMParams()
+						uvp.RequestBody = &models.VMOperateParams{
+							Where: &models.VMWhereInput{
+								ID: &id,
+							},
+						}
+						uvp.Context = ctx
+						vms, err := utils.RetryWithExponentialBackoff(ctx, func() (*vm.PoweroffVMOK, error) {
+							return ct.Api.VM.PoweroffVM(uvp)
+						}, utils.RetryWithExponentialBackoffOptions{})
+						if err != nil {
+							return err
+						}
+						err = waitVmTasksFinish(ctx, ct, vms.Payload)
+						if err != nil {
+							return err
+						}
+					} else {
+						uvp := vm.NewShutDownVMParams()
+						uvp.RequestBody = &models.VMOperateParams{
+							Where: &models.VMWhereInput{
+								ID: &id,
+							},
+						}
+						uvp.Context = ctx
+						vms, err := ct.Api.VM.ShutDownVM(uvp)
+						if err != nil {
+							return err
+						}
+						err = waitVmTasksFinish(ctx, ct, vms.Payload)
+						if err != nil {
+							return err
+						}
+					}
+					return nil
+				}
+			case models.VMStatusSTOPPED:
+				if needUpdateVmToolsAttribute {
+					return diag.Errorf("vm status is %s, cannot update vm tools related attributes, please start vm first", *originalVm.Status)
+				}
+			default:
+				return diag.Errorf("vm status is %s, cannot power off vm", *originalVm.Status)
+			}
+		case models.VMStatusSUSPENDED:
+			switch *originalVm.Status {
+			case models.VMStatusRUNNING:
+				runStatusChangeFirst = false
+				statusChangeFunc = func() error {
+					uvp := vm.NewSuspendVMParams()
+					uvp.RequestBody = &models.VMOperateParams{
+						Where: &models.VMWhereInput{
+							ID: &id,
+						},
+					}
+					uvp.Context = ctx
+					vms, err := ct.Api.VM.SuspendVM(uvp)
+					if err != nil {
+						return err
+					}
+					err = waitVmTasksFinish(ctx, ct, vms.Payload)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+			case models.VMStatusSUSPENDED:
+				if needUpdateVmToolsAttribute {
+					return diag.Errorf("vm status is %s, cannot update vm tools related attributes, please start vm first", *originalVm.Status)
+				}
+			default:
+				return diag.Errorf("vm status is %s, cannot suspend vm", *originalVm.Status)
+			}
+		}
+	} else if needUpdateVmToolsAttribute && (*originalVm.Status != models.VMStatusRUNNING) {
+		return diag.Errorf("vm status is %s, cannot update vm tools related attributes, please start vm first", *originalVm.Status)
+	}
+
 	// rollback vm to target state first if rollback_to not match rollback from
 	if d.HasChange("rollback_to") {
 		rawRollbackTo, ok := d.GetOk("rollback_to")
@@ -1579,86 +1608,55 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.FromErr(err)
 	}
 	ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
-
+	if runStatusChangeFirst && statusChangeFunc != nil {
+		err := statusChangeFunc()
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
 	if needUpdateVmToolsAttribute {
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		var outerErr error
-		go func() {
-			defer wg.Done()
-			if *originalVm.Status == models.VMStatusSTOPPED {
-				stopFunc, err := helper.StartVmTemporary(ctx, ct, d.Id())
-				if err != nil {
-					outerErr = err
-					return
-				}
-				defer func() {
-					if stopFunc != nil {
-						if outerErr != nil {
-							err := stopFunc()
-							if err != nil {
-								outerErr = errors.Join(outerErr, err)
-							}
-						} else {
-							err := stopFunc()
-							if err != nil {
-								outerErr = errors.Join(outerErr, err)
-							}
-						}
-					}
-				}()
-			}
+		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+				"data":   updateVmToolsAttributeParams,
+				"effect": updateEffect,
+				"where": VmWhereUniqueInput{
+					"id": d.Id(),
+				},
+			}, graphql.OperationName("updateVm"))
+		}, utils.RetryWithExponentialBackoffOptions{})
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if needUpdateDnsServers {
 			_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
 				return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-					"data":   updateVmToolsAttributeParams,
-					"effect": updateEffect,
+					"data":   updateDnsServersParams,
+					"effect": UpdateVmEffect{},
 					"where": VmWhereUniqueInput{
 						"id": d.Id(),
 					},
 				}, graphql.OperationName("updateVm"))
 			}, utils.RetryWithExponentialBackoffOptions{})
 			if err != nil {
-				outerErr = err
-				return
+				return diag.FromErr(err)
 			}
 			_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
 			if err != nil {
-				outerErr = err
-				return
+				return diag.FromErr(err)
 			}
-			if needUpdateDnsServers {
-				_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
-					return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-						"data":   updateDnsServersParams,
-						"effect": UpdateVmEffect{},
-						"where": VmWhereUniqueInput{
-							"id": d.Id(),
-						},
-					}, graphql.OperationName("updateVm"))
-				}, utils.RetryWithExponentialBackoffOptions{})
-				if err != nil {
-					outerErr = err
-					return
-				}
-				_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
-				if err != nil {
-					outerErr = err
-					return
-				}
-			}
-		}()
-		wg.Wait()
-		if outerErr != nil {
-			return diag.FromErr(outerErr)
 		}
 	}
-	// change vm status to desired state
-	if statusChangeFunc != nil {
+	if !runStatusChangeFirst && statusChangeFunc != nil {
 		err := statusChangeFunc()
 		if err != nil {
 			return diag.FromErr(err)
 		}
 	}
+
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -2019,7 +2017,7 @@ func readVmDisksFromTemplate(ctx context.Context, d *schema.ResourceData, ct *cl
 	if err != nil {
 		return nil, diag.FromErr(err)
 	} else if len(vmTemplates.Payload) == 0 {
-		return nil, diag.FromErr(fmt.Errorf("template %s not found", cloneFromTemplate))
+		return nil, diag.Errorf("template %s not found", cloneFromTemplate)
 	}
 	return vmTemplates.Payload[0].VMDisks, nil
 }
@@ -2037,7 +2035,7 @@ func readVmDisksFromContentLibraryTemplate(ctx context.Context, d *schema.Resour
 	if err != nil {
 		return nil, diag.FromErr(err)
 	} else if len(contentLibraryVmTemplates.Payload) == 0 {
-		return nil, diag.FromErr(fmt.Errorf("content library template %s not found", cloneFromTemplate))
+		return nil, diag.Errorf("content library template %s not found", cloneFromTemplate)
 	}
 	gp := vm_template.NewGetVMTemplatesParams()
 	gp.RequestBody = &models.GetVMTemplatesRequestBody{
@@ -2049,7 +2047,7 @@ func readVmDisksFromContentLibraryTemplate(ctx context.Context, d *schema.Resour
 	if err != nil {
 		return nil, diag.FromErr(err)
 	} else if len(vmTemplates.Payload) == 0 {
-		return nil, diag.FromErr(fmt.Errorf("template %s not found", cloneFromTemplate))
+		return nil, diag.Errorf("template %s not found", cloneFromTemplate)
 	}
 	return vmTemplates.Payload[0].VMDisks, nil
 }
@@ -2067,7 +2065,7 @@ func readVmDisksFromSnapshot(ctx context.Context, d *schema.ResourceData, ct *cl
 	if err != nil {
 		return nil, diag.FromErr(err)
 	} else if len(snapshots.Payload) == 0 {
-		return nil, diag.FromErr(fmt.Errorf("snapshot %s not found", cloneFromTemplate))
+		return nil, diag.Errorf("snapshot %s not found", cloneFromTemplate)
 	}
 	return snapshots.Payload[0].VMDisks, nil
 }
@@ -2417,7 +2415,7 @@ func cloneVmFromVmTemplate(cloneFromTemplate string, ctx context.Context, d *sch
 	}
 	isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
 	if !ok {
-		return nil, diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
+		return nil, diag.Errorf("when create from template, please set is_full_copy")
 	}
 	isFullCopy := isFullCopyRes.(bool)
 	cvft := vm.NewCreateVMFromTemplateParams()
@@ -2507,7 +2505,7 @@ func cloneVmFromContentLibraryVmTemplate(cloneFromContentLibraryTemplate string,
 	}
 	isFullCopyRes, ok := d.GetOkExists("create_effect.0.is_full_copy")
 	if !ok {
-		return nil, diag.FromErr(fmt.Errorf("when create from template, please set is_full_copy"))
+		return nil, diag.Errorf("when create from template, please set is_full_copy")
 	}
 	isFullCopy := isFullCopyRes.(bool)
 	cvft := vm.NewCreateVMFromContentLibraryTemplateParams()
