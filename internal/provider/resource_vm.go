@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -778,6 +779,9 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diags
 	}
 
+	if err := d.Set("name", v.Name); err != nil {
+		return diag.FromErr(err)
+	}
 	// set computed variables
 	if err := d.Set("cluster_id", v.Cluster.ID); err != nil {
 		return diag.FromErr(err)
@@ -1410,7 +1414,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 							ID: &id,
 						},
 						Data: &models.VMStartParamsData{
-							HostID: basic.HostId,
+							HostID: hostId,
 						},
 					}
 					uvp.Context = ctx
@@ -1565,6 +1569,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
+	if d.HasChange("cluster_id") {
+		return diag.Errorf("cross cluster migration is not supported yet")
+	}
+
 	// then migrate the vm if needed
 	if d.HasChange("host_id") {
 		hostId := d.Get("host_id").(string)
@@ -1594,20 +1602,25 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	// execute vm basic updation in the last
-	_, err := utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
-		return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
-			"data":   updateParams,
-			"effect": updateEffect,
-			"where": VmWhereUniqueInput{
-				"id": d.Id(),
-			},
-		}, graphql.OperationName("updateVm"))
-	}, utils.RetryWithExponentialBackoffOptions{})
-
-	if err != nil {
-		return diag.FromErr(err)
+	if !reflect.ValueOf(updateParams).IsZero() {
+		// skip basic params change if struct is zero
+		_, err := utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
+				"data":   updateParams,
+				"effect": UpdateVmEffect{},
+				"where": VmWhereUniqueInput{
+					"id": d.Id(),
+				},
+			}, graphql.OperationName("updateVm"))
+		}, utils.RetryWithExponentialBackoffOptions{})
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		_, err = ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	ct.WaitTaskForResource(ctx, d.Id(), "updateVm")
 	if runStatusChangeFirst && statusChangeFunc != nil {
 		err := statusChangeFunc()
 		if err != nil {
@@ -1615,6 +1628,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 	if needUpdateVmToolsAttribute {
+		_, err := helper.WaitVmToolsRunning(ctx, ct, d.Id())
+		if err != nil {
+			return diag.FromErr(err)
+		}
 		_, err = utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
 			return nil, ct.GraphqlApi.Mutate(ctx, &updateVm, map[string]interface{}{
 				"data":   updateVmToolsAttributeParams,

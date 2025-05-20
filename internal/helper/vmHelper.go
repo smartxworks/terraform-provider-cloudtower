@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/utils"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/client/vm"
@@ -110,6 +111,24 @@ func StartVmTemporary(ctx context.Context, ct *cloudtower.Client, vmId string) (
 		}
 		// vm has been started temporary, need to power off when done
 		return func() error {
+			// shutdown vm first
+			shutdownParams := vm.NewShutDownVMParams()
+			shutdownParams.RequestBody = &models.VMOperateParams{
+				Where: &models.VMWhereInput{
+					ID: &vmId,
+				},
+			}
+			shutDownResp, err := utils.RetryWithExponentialBackoff(ctx, func() (*vm.ShutDownVMOK, error) {
+				return ct.Api.VM.ShutDownVM(shutdownParams)
+			}, utils.RetryWithExponentialBackoffOptions{})
+			if err == nil {
+				_, err = ct.WaitTasksFinish(ctx, []string{*shutDownResp.Payload[0].TaskID})
+				if err == nil {
+					return nil
+				}
+			}
+			tflog.Warn(ctx, "failed to shutdown VM, power off it directly")
+			// if shutdown failed, power off vm
 			powerOffParams := vm.NewPoweroffVMParams()
 			powerOffParams.RequestBody = &models.VMOperateParams{
 				Where: &models.VMWhereInput{
