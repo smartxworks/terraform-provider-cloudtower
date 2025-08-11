@@ -55,6 +55,18 @@ func NewClient(server string, username string, passwd string, source models.User
 		Password: StrPtr(passwd),
 		Source:   &source,
 	}
+	graphqlClient := graphql.NewClient(fmt.Sprintf("http://%s/api", server), nil)
+	if source == models.UserSourceLDAP {
+		authConfigId, err := getLdapConfig(context.TODO(), graphqlClient)
+		if err != nil {
+			return nil, err
+		}
+		if authConfigId == nil {
+			return nil, errors.New("LDAP config not found")
+		}
+		loginParams.RequestBody.AuthConfigID = authConfigId
+		loginParams.RequestBody.Source = models.UserSourceAUTHN.Pointer()
+	}
 	loginResp, err := api.User.Login(loginParams)
 	if err != nil {
 		return nil, err
@@ -68,7 +80,6 @@ func NewClient(server string, username string, passwd string, source models.User
 	if err != nil {
 		return nil, err
 	}
-	graphqlClient := graphql.NewClient(fmt.Sprintf("http://%s/api", server), nil)
 
 	return &Client{
 		server:   server,
@@ -160,4 +171,27 @@ func (c *Client) WaitTaskForResource(ctx context.Context, id string, task_type s
 			return tasksResp, nil
 		}
 	}
+}
+
+func getLdapConfig(ctx context.Context, graphqlClient *graphql.Client) (*string, error) {
+	var authnStrategies struct {
+		AuthnStrategies []struct {
+			Id   graphql.String
+			Type graphql.String
+		} `graphql:"authnStrategies"`
+	}
+	_, err := utils.RetryWithExponentialBackoff(ctx, func() (interface{}, error) {
+		return nil, graphqlClient.Query(ctx, &authnStrategies, map[string]interface{}{})
+	}, utils.RetryWithExponentialBackoffOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range authnStrategies.AuthnStrategies {
+		if v.Type == "LDAP" {
+			id := string(v.Id)
+			return &id, nil
+		}
+	}
+	return nil, nil
 }
