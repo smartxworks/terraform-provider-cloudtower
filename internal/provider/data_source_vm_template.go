@@ -172,6 +172,36 @@ func dataSourceVmTemplate() *schema.Resource {
 							Computed:    true,
 							Description: "template's nics",
 						},
+						"cpu_cores": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "template's cpu cores",
+						},
+						"cpu_sockets": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "template's cpu sockets",
+						},
+						"memory": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "template's in the unit of byte, must be a multiple of 512MB, long value, ignore the decimal point",
+						},
+						"firmware": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "template's firmware, forcenew as it isn't able to modify after create, must be one of 'BIOS', 'UEFI'",
+						},
+						"clock_offset": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "template's clock offset, must be one of 'LOCALTIME', 'UTC'",
+						},
+						"win_opt": {
+							Type:        schema.TypeBool,
+							Computed:    true,
+							Description: "template's win_opt",
+						},
 					},
 				},
 			},
@@ -277,12 +307,18 @@ func dataSourceVmTemplateRead(ctx context.Context, d *schema.ResourceData, meta 
 			})
 		}
 		output = append(output, map[string]interface{}{
-			"id":          d.ID,
-			"name":        d.Name,
-			"create_time": d.LocalCreatedAt,
-			"disks":       disks,
-			"cd_roms":     cdroms,
-			"nics":        nics,
+			"id":           d.ID,
+			"name":         d.Name,
+			"create_time":  d.LocalCreatedAt,
+			"disks":        disks,
+			"cd_roms":      cdroms,
+			"nics":         nics,
+			"cpu_cores":    d.CPU.Cores,
+			"cpu_sockets":  d.CPU.Sockets,
+			"memory":       d.Memory,
+			"firmware":     d.Firmware,
+			"clock_offset": d.ClockOffset,
+			"win_opt":      d.WinOpt,
 		})
 	}
 	if diags.HasError() {
