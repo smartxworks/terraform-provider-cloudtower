@@ -169,6 +169,36 @@ func dataSourceContentLibraryVmTemplate() *schema.Resource {
 										Computed:    true,
 										Description: "template's nics",
 									},
+									"cpu_cores": {
+										Type:        schema.TypeInt,
+										Computed:    true,
+										Description: "template's cpu cores",
+									},
+									"cpu_sockets": {
+										Type:        schema.TypeInt,
+										Computed:    true,
+										Description: "template's cpu sockets",
+									},
+									"memory": {
+										Type:        schema.TypeInt,
+										Computed:    true,
+										Description: "template's memory in the unit of byte, must be a multiple of 512MB, long value, ignore the decimal point",
+									},
+									"firmware": {
+										Type:        schema.TypeString,
+										Computed:    true,
+										Description: "template's firmware, must be one of 'BIOS', 'UEFI'",
+									},
+									"clock_offset": {
+										Type:        schema.TypeString,
+										Computed:    true,
+										Description: "template's clock offset, must be one of 'LOCALTIME', 'UTC'",
+									},
+									"win_opt": {
+										Type:        schema.TypeBool,
+										Computed:    true,
+										Description: "template's win_opt",
+									},
 								},
 							},
 						},
@@ -283,10 +313,16 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 					})
 				}
 				vm_templates[idx] = map[string]interface{}{
-					"disks":   disks,
-					"nics":    nics,
-					"id":      rawTemplate.ID,
-					"cluster": rawTemplate.Cluster.ID,
+					"disks":        disks,
+					"nics":         nics,
+					"id":           rawTemplate.ID,
+					"cluster":      rawTemplate.Cluster.ID,
+					"cpu_cores":    rawTemplate.CPU.Cores,
+					"cpu_sockets":  rawTemplate.CPU.Sockets,
+					"memory":       rawTemplate.Memory,
+					"firmware":     rawTemplate.Firmware,
+					"clock_offset": rawTemplate.ClockOffset,
+					"win_opt":      rawTemplate.WinOpt,
 				}
 			}(template, ti)
 		}
