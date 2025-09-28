@@ -21,7 +21,7 @@ CloudTower content library vm template data source.
 - `cluster_in` (List of String, Deprecated) the cluster id which template has already distributed to.
 - `name` (String) content library vm template's name
 - `name_contains` (String) filter content_library vm template by its name contains characters
-- `name_in` (String) content library vm template's name as an array
+- `name_in` (List of String) content library vm template's name as an array
 
 ### Read-Only
 
@@ -43,10 +43,16 @@ Read-Only:
 
 Read-Only:
 
+- `clock_offset` (String)
 - `cluster` (String)
+- `cpu_cores` (Number)
+- `cpu_sockets` (Number)
 - `disks` (List of Object) (see [below for nested schema](#nestedobjatt--content_library_vm_templates--vm_templates--disks))
+- `firmware` (String)
 - `id` (String)
+- `memory` (Number)
 - `nics` (List of Object) (see [below for nested schema](#nestedobjatt--content_library_vm_templates--vm_templates--nics))
+- `win_opt` (Boolean)
 
 <a id="nestedobjatt--content_library_vm_templates--vm_templates--disks"></a>
 ### Nested Schema for `content_library_vm_templates.vm_templates.disks`

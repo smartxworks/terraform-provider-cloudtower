@@ -34,11 +34,17 @@ CloudTower vm template data source.
 Read-Only:
 
 - `cd_roms` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--cd_roms))
+- `clock_offset` (String)
+- `cpu_cores` (Number)
+- `cpu_sockets` (Number)
 - `create_time` (String)
 - `disks` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--disks))
+- `firmware` (String)
 - `id` (String)
+- `memory` (Number)
 - `name` (String)
 - `nics` (List of Object) (see [below for nested schema](#nestedobjatt--vm_templates--nics))
+- `win_opt` (Boolean)
 
 <a id="nestedobjatt--vm_templates--cd_roms"></a>
 ### Nested Schema for `vm_templates.cd_roms`
