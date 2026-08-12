@@ -66,10 +66,12 @@ func New(version string) func() *schema.Provider {
 				"cloudtower_vm_snapshot":                 dataSourceVmSnapshot(),
 				"cloudtower_vm_template":                 dataSourceVmTemplate(),
 				"cloudtower_content_library_vm_template": dataSourceContentLibraryVmTemplate(),
+				"cloudtower_vds":                         dataSourceVds(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  resourceDatacenter(),
 				"cloudtower_cluster":                     resourceCluster(),
+				"cloudtower_vm_vlan":                     resourceVmVlan(),
 				"cloudtower_vm":                          resourceVm(),
 				"cloudtower_vm_snapshot":                 resourceVmSnapshot(),
 				"cloudtower_vm_template":                 resourceVmTemplate(),
