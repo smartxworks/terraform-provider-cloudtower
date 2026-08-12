@@ -31,7 +31,7 @@ func dataSourceContentLibraryVmTemplate() *schema.Resource {
 				Description:   "content library vm template's name",
 			},
 			"name_in": {
-				Type:          schema.TypeString,
+				Type:          schema.TypeList,
 				Optional:      true,
 				ConflictsWith: []string{"name"},
 				Description:   "content library vm template's name as an array",
@@ -259,8 +259,8 @@ func dataSourceContentLibraryVmTemplateRead(ctx context.Context, d *schema.Resou
 		return diag.FromErr(err)
 	}
 	output := make([]map[string]interface{}, 0)
-	var err_channel chan error = make(chan error, len(vm_templates.Payload))
 	for _, d := range vm_templates.Payload {
+		var err_channel chan error = make(chan error, len(vm_templates.Payload))
 		var vm_templates []map[string]interface{} = make([]map[string]interface{}, len(d.VMTemplates))
 		var wg sync.WaitGroup
 		for ti, template := range d.VMTemplates {
