@@ -81,6 +81,19 @@ func dataSourceVm() *schema.Resource {
 				ConflictsWith: []string{"host_id"},
 				Description:   "filter VMs by host id in an array",
 			},
+			"placement_group_id": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"placement_group_id_in"},
+				Description:   "filter VMs by placement group id",
+			},
+			"placement_group_id_in": {
+				Type:          schema.TypeList,
+				Elem:          &schema.Schema{Type: schema.TypeString},
+				Optional:      true,
+				ConflictsWith: []string{"placement_group_id"},
+				Description:   "filter VMs by placement group ids",
+			},
 			"vms": {
 				Type:        schema.TypeList,
 				Computed:    true,
@@ -101,6 +114,12 @@ func dataSourceVm() *schema.Resource {
 							Type:        schema.TypeString,
 							Computed:    true,
 							Description: "VM's status",
+						},
+						"placement_group_ids": {
+							Type:        schema.TypeSet,
+							Elem:        &schema.Schema{Type: schema.TypeString},
+							Computed:    true,
+							Description: "IDs of placement groups to which this VM belongs",
 						},
 					},
 				},
@@ -128,11 +147,18 @@ func dataSourceVmRead(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.FromErr(err)
 	}
 	output := make([]map[string]interface{}, 0)
-	for _, d := range vms.Payload {
+	for _, vm := range vms.Payload {
+		vmPlacementGroupIDs := make([]string, 0, len(vm.VMPlacementGroup))
+		for _, group := range vm.VMPlacementGroup {
+			if group != nil && group.ID != nil {
+				vmPlacementGroupIDs = append(vmPlacementGroupIDs, *group.ID)
+			}
+		}
 		output = append(output, map[string]interface{}{
-			"id":     d.ID,
-			"name":   d.Name,
-			"status": d.Status,
+			"id":                  vm.ID,
+			"name":                vm.Name,
+			"status":              vm.Status,
+			"placement_group_ids": vmPlacementGroupIDs,
 		})
 	}
 	err = d.Set("vms", output)
@@ -217,6 +243,16 @@ func expandVmWhereInput(d *schema.ResourceData) (*models.VMWhereInput, error) {
 			where.Host = &models.HostWhereInput{
 				IDIn: hostIdIn,
 			}
+		}
+	}
+	if groupID := d.Get("placement_group_id").(string); groupID != "" {
+		where.VMPlacementGroupSome = &models.VMPlacementGroupWhereInput{ID: &groupID}
+	} else {
+		groupIDs, err := helper.SliceInterfacesToTypeSlice[string](d.Get("placement_group_id_in").([]interface{}))
+		if err != nil {
+			return nil, err
+		} else if len(groupIDs) > 0 {
+			where.VMPlacementGroupSome = &models.VMPlacementGroupWhereInput{IDIn: groupIDs}
 		}
 	}
 	return where, nil
