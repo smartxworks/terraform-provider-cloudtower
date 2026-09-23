@@ -76,6 +76,7 @@ func New(version string) func() *schema.Provider {
 			DataSourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  dataSourceDatacenter(),
 				"cloudtower_cluster":                     dataSourceCluster(),
+				"cloudtower_vm_placement_group":          dataSourceVMPlacementGroup(),
 				"cloudtower_vlan":                        dataSourceVlan(),
 				"cloudtower_iso":                         dataSourceIso(),
 				"cloudtower_svt_iso":                     dataSourceSvtImage(),
@@ -89,6 +90,7 @@ func New(version string) func() *schema.Provider {
 			ResourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  resourceDatacenter(),
 				"cloudtower_cluster":                     resourceCluster(),
+				"cloudtower_vm_placement_group":          resourceVMPlacementGroup(),
 				"cloudtower_vm_vlan":                     resourceVmVlan(),
 				"cloudtower_vm":                          resourceVm(),
 				"cloudtower_vm_snapshot":                 resourceVmSnapshot(),
