@@ -39,6 +39,7 @@ CloudTower vm resource.
 - `hostname` (String) VM's hostname
 - `memory` (Number) VM's memory, in the unit of byte, must be a multiple of 512MB, long value, ignore the decimal point
 - `nic` (Block List) VM's virtual nic (see [below for nested schema](#nestedblock--nic))
+- `placement_group_ids` (Set of String) IDs of placement groups to which this VM belongs
 - `rollback_to` (String) Vm is going to rollback to target snapshot
 - `status` (String) VM's status
 - `vcpu` (Number) VM's vcpu

@@ -551,6 +551,13 @@ func resourceVm() *schema.Resource {
 				Optional:    true,
 				Computed:    true,
 			},
+			"placement_group_ids": {
+				Type:        schema.TypeSet,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "IDs of placement groups to which this VM belongs",
+				Optional:    true,
+				Computed:    true,
+			},
 			"description": {
 				Type:        schema.TypeString,
 				Description: "VM's description",
@@ -767,6 +774,15 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diags
 	}
 	d.SetId(*vms[0].Data.ID)
+	if resourceDataFieldConfigured(d, "placement_group_ids") {
+		vm, readDiags := readVm(ctx, d, ct)
+		if readDiags != nil || vm == nil {
+			return readDiags
+		}
+		if err := syncVMPlacementGroups(ctx, ct, vm, stringSetValues(d.Get("placement_group_ids"))); err != nil {
+			return diag.FromErr(err)
+		}
+	}
 	return resourceVmRead(ctx, d, meta)
 }
 
@@ -808,6 +824,15 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		if err := d.Set("folder_id", v.Folder.ID); err != nil {
 			return diag.FromErr(err)
 		}
+	}
+	vmPlacementGroupIDs := make([]string, 0, len(v.VMPlacementGroup))
+	for _, group := range v.VMPlacementGroup {
+		if group != nil && group.ID != nil {
+			vmPlacementGroupIDs = append(vmPlacementGroupIDs, *group.ID)
+		}
+	}
+	if err := d.Set("placement_group_ids", vmPlacementGroupIDs); err != nil {
+		return diag.FromErr(err)
 	}
 	if err := d.Set("description", v.Description); err != nil {
 		return diag.FromErr(err)
@@ -1670,6 +1695,11 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if !runStatusChangeFirst && statusChangeFunc != nil {
 		err := statusChangeFunc()
 		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	if d.HasChange("placement_group_ids") {
+		if err := syncVMPlacementGroups(ctx, ct, originalVm, stringSetValues(d.Get("placement_group_ids"))); err != nil {
 			return diag.FromErr(err)
 		}
 	}
