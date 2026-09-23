@@ -24,6 +24,8 @@ CloudTower vm data source.
 - `name` (String) filter VMs by name
 - `name_contains` (String) filter VMs by name contain a certain string
 - `name_in` (List of String) filter VMs by name in an array
+- `placement_group_id` (String) filter VMs by placement group id
+- `placement_group_id_in` (List of String) filter VMs by placement group ids
 - `status` (String) filter VMs by status
 - `status_in` (List of String) filter VMs by status in an array
 
@@ -39,4 +41,5 @@ Read-Only:
 
 - `id` (String)
 - `name` (String)
+- `placement_group_ids` (Set of String)
 - `status` (String)
