@@ -50,10 +50,20 @@ func New(version string) func() *schema.Provider {
 					Description: "The source type of user",
 				},
 				"cloudtower_server": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("CLOUDTOWER_SERVER", nil),
-					Description: "The CloudTower Server name.",
+					Type:          schema.TypeString,
+					Optional:      true,
+					DefaultFunc:   schema.EnvDefaultFunc("CLOUDTOWER_SERVER", nil),
+					ConflictsWith: []string{"cloudtower_servers"},
+					Description:   "The CloudTower server address as a bare `host[:port]`, e.g. `tower.example.com`. For an HA CloudTower use `cloudtower_servers` instead.",
+				},
+				"cloudtower_servers": {
+					Type:          schema.TypeList,
+					Optional:      true,
+					Elem:          &schema.Schema{Type: schema.TypeString},
+					ConflictsWith: []string{"cloudtower_server"},
+					Description: "The management endpoints of an HA CloudTower (4.9.0+, multiple management IPs in an active-passive deployment) as bare `host[:port]` addresses, " +
+						"e.g. `[\"tower-a.example.com\", \"tower-b.example.com\"]`. " +
+						"The provider probes the endpoints to find the active node and fails over automatically when the active node switches. Conflicts with `cloudtower_server`.",
 				},
 				"scheme": {
 					Type:         schema.TypeString,
@@ -111,6 +121,7 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		password := d.Get("password").(string)
 		usersource := d.Get("user_source").(string)
 		server := d.Get("cloudtower_server").(string)
+		servers := d.Get("cloudtower_servers").([]interface{})
 		scheme := d.Get("scheme").(string)
 		skipTLSVerify := d.Get("skip_tls_verify").(bool)
 		var usource models.UserSource
@@ -119,7 +130,24 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		} else {
 			usource = models.UserSourceLOCAL
 		}
-		c, err := cloudtower.NewClient(server, username, password, usource, scheme, skipTLSVerify)
+
+		var c *cloudtower.Client
+		var err error
+		if len(servers) > 0 {
+			if server != "" {
+				return nil, diag.Errorf("only one of cloudtower_server and cloudtower_servers can be set; cloudtower_server may also be set via the CLOUDTOWER_SERVER environment variable")
+			}
+			serverList := make([]string, 0, len(servers))
+			for _, s := range servers {
+				serverList = append(serverList, s.(string))
+			}
+			c, err = cloudtower.NewHAClient(ctx, serverList, username, password, usource, scheme, skipTLSVerify)
+		} else {
+			if server == "" {
+				return nil, diag.Errorf("one of cloudtower_server and cloudtower_servers must be set; cloudtower_server may also be set via the CLOUDTOWER_SERVER environment variable")
+			}
+			c, err = cloudtower.NewClient(ctx, server, username, password, usource, scheme, skipTLSVerify)
+		}
 
 		if err != nil {
 			return nil, diag.FromErr(err)
