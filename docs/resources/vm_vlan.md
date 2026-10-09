@@ -27,4 +27,5 @@ CloudTower VM VLAN resource.
 
 ### Read-Only
 
+- `id` (String) The ID of this resource.
 - `local_id` (String) VLAN's local ID

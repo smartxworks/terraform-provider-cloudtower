@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-provider-cloudtower/internal/cloudtower"
 	"github.com/smartxworks/cloudtower-go-sdk/v2/models"
@@ -49,10 +51,21 @@ func New(version string) func() *schema.Provider {
 					Description: "The source type of user",
 				},
 				"cloudtower_server": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("CLOUDTOWER_SERVER", nil),
-					Description: "The CloudTower Server name.",
+					Type:          schema.TypeString,
+					Optional:      true,
+					DefaultFunc:   schema.EnvDefaultFunc("CLOUDTOWER_SERVER", nil),
+					ConflictsWith: []string{"cloudtower_servers"},
+					Description:   "The CloudTower server address, e.g. `tower.example.com` or `https://tower.example.com`. For an HA CloudTower use `cloudtower_servers` instead.",
+				},
+				"cloudtower_servers": {
+					Type:          schema.TypeList,
+					Optional:      true,
+					Elem:          &schema.Schema{Type: schema.TypeString},
+					DefaultFunc:   envListDefaultFunc("CLOUDTOWER_SERVERS"),
+					ConflictsWith: []string{"cloudtower_server"},
+					Description: "The management endpoints of an HA CloudTower (4.9.0+, multiple management IPs in an active-passive deployment), " +
+						"e.g. `[\"https://tower-a.example.com\", \"https://tower-b.example.com\"]`. " +
+						"The provider probes the endpoints to find the active node and fails over automatically when the active node switches. Conflicts with `cloudtower_server`.",
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
@@ -93,18 +106,54 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		password := d.Get("password").(string)
 		usersource := d.Get("user_source").(string)
 		server := d.Get("cloudtower_server").(string)
+		servers := d.Get("cloudtower_servers").([]interface{})
 		var usource models.UserSource
 		if usersource == "LDAP" {
 			usource = models.UserSourceLDAP
 		} else {
 			usource = models.UserSourceLOCAL
 		}
-		c, err := cloudtower.NewClient(server, username, password, usource)
+
+		var c *cloudtower.Client
+		var err error
+		if len(servers) > 0 {
+			if server != "" {
+				return nil, diag.Errorf("only one of cloudtower_server and cloudtower_servers can be set; note that values picked up from the CLOUDTOWER_SERVER and CLOUDTOWER_SERVERS environment variables also count")
+			}
+			serverList := make([]string, 0, len(servers))
+			for _, s := range servers {
+				serverList = append(serverList, s.(string))
+			}
+			c, err = cloudtower.NewHAClient(ctx, serverList, username, password, usource)
+		} else {
+			if server == "" {
+				return nil, diag.Errorf("one of cloudtower_server and cloudtower_servers must be set, in the provider configuration or via the CLOUDTOWER_SERVER / CLOUDTOWER_SERVERS environment variables")
+			}
+			c, err = cloudtower.NewClient(ctx, server, username, password, usource)
+		}
 
 		if err != nil {
 			return nil, diag.FromErr(err)
 		}
 
 		return c, diags
+	}
+}
+
+// envListDefaultFunc reads a comma separated list from the given environment
+// variable, so that e.g. CLOUDTOWER_SERVERS="https://a.example.com,https://b.example.com"
+// configures both HA endpoints.
+func envListDefaultFunc(envVar string) schema.SchemaDefaultFunc {
+	return func() (interface{}, error) {
+		var list []interface{}
+		for _, item := range strings.Split(os.Getenv(envVar), ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				list = append(list, item)
+			}
+		}
+		if len(list) == 0 {
+			return nil, nil
+		}
+		return list, nil
 	}
 }
