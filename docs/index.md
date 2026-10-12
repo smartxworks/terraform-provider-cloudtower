@@ -32,6 +32,11 @@ provider "cloudtower" {
 #   username           = "admin"
 #   password           = "password"
 #   user_source        = "LOCAL"
+#
+#   # Endpoints addressed by bare IP typically carry self-signed certificates
+#   # that cannot be verified; skip_tls_verify disables TLS certificate
+#   # verification (also via CLOUDTOWER_SKIP_TLS_VERIFY). Use with caution.
+#   skip_tls_verify = true
 # }
 ```
 
@@ -48,3 +53,4 @@ provider "cloudtower" {
 
 - `cloudtower_server` (String) The CloudTower server address, e.g. `tower.example.com` or `https://tower.example.com`. For an HA CloudTower use `cloudtower_servers` instead.
 - `cloudtower_servers` (List of String) The management endpoints of an HA CloudTower (4.9.0+, multiple management IPs in an active-passive deployment), e.g. `["https://tower-a.example.com", "https://tower-b.example.com"]`. The provider probes the endpoints to find the active node and fails over automatically when the active node switches. Conflicts with `cloudtower_server`.
+- `skip_tls_verify` (Boolean) Skip TLS certificate verification when connecting to CloudTower over HTTPS. Useful for endpoints whose self-signed certificates cannot be verified, e.g. bare IP addresses of an HA CloudTower. Use with caution: the connection is no longer protected against man-in-the-middle attacks.

@@ -51,20 +51,20 @@ type haGraphqlClient struct {
 	discoverErr  error         // result of the last discovery
 }
 
-func newHAGraphqlClient(endpoints []endpoint, userAgent string) *graphql.Client {
-	return graphql.NewClient(endpoints[0].graphqlURL(), newHAGraphqlDoer(endpoints, userAgent))
+func newHAGraphqlClient(endpoints []endpoint, userAgent string, insecure bool) *graphql.Client {
+	return graphql.NewClient(endpoints[0].graphqlURL(), newHAGraphqlDoer(endpoints, userAgent, insecure))
 }
 
-func newHAGraphqlDoer(endpoints []endpoint, userAgent string) *haGraphqlClient {
+func newHAGraphqlDoer(endpoints []endpoint, userAgent string, insecure bool) *haGraphqlClient {
 	probers := make([]endpointProber, 0, len(endpoints))
 	for _, ep := range endpoints {
-		probers = append(probers, newEndpointAPIClient(ep))
+		probers = append(probers, newEndpointAPIClient(ep, insecure))
 	}
 	return &haGraphqlClient{
 		endpoints: endpoints,
 		probers:   probers,
 		// redirects are handled by failover instead of being followed
-		inner:        &http.Client{Transport: SetUserAgent(http.DefaultTransport, userAgent), CheckRedirect: stopRedirect},
+		inner:        &http.Client{Transport: SetUserAgent(httpTransport(insecure), userAgent), CheckRedirect: stopRedirect},
 		probeTimeout: haProbeTimeout,
 	}
 }

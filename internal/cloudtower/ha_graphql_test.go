@@ -178,7 +178,7 @@ func doAndRead(t *testing.T, doer *haGraphqlClient, body string) (string, error)
 func TestHAGraphqlClientRoutesToActiveAndCaches(t *testing.T) {
 	cluster := newFakeHACluster(t, 2)
 	cluster.setActive(1)
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	payload, err := doAndRead(t, doer, `{"q":1}`)
 	if err != nil {
@@ -210,7 +210,7 @@ func TestHAGraphqlClientConcurrentDiscoverySingleflight(t *testing.T) {
 	cluster.setActive(1)
 	// widen the discovery window so every caller joins the same discovery
 	cluster.probeDelay = 100 * time.Millisecond
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	const callers = 4
 	errs := make([]error, callers)
@@ -260,7 +260,7 @@ func TestHAGraphqlClientWaiterRespectsContext(t *testing.T) {
 	cluster.setActive(0)
 	// probes block until the gate is released
 	cluster.probeGate = make(chan struct{})
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	type result struct {
 		resp *http.Response
@@ -319,7 +319,7 @@ func TestHAGraphqlClientProbeTimeout(t *testing.T) {
 	cluster := newFakeHACluster(t, 1)
 	cluster.setActive(0)
 	cluster.probeDelay = 500 * time.Millisecond
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 	doer.probeTimeout = 50 * time.Millisecond
 
 	// the probe exceeds its timeout and discovery reports no active host
@@ -332,7 +332,7 @@ func TestHAGraphqlClientProbeTimeout(t *testing.T) {
 func TestHAGraphqlClientKeepsCacheOnCanceledRequest(t *testing.T) {
 	cluster := newFakeHACluster(t, 2)
 	cluster.setActive(1)
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	if _, err := doAndRead(t, doer, `{"q":1}`); err != nil {
 		t.Fatalf("Do() returned error: %v", err)
@@ -360,7 +360,7 @@ func TestHAGraphqlClientWaiterIgnoresStarterCancellation(t *testing.T) {
 	cluster := newFakeHACluster(t, 1)
 	cluster.setActive(0)
 	cluster.probeGate = make(chan struct{})
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	type result struct {
 		resp *http.Response
@@ -426,7 +426,7 @@ func TestHAGraphqlClientWaiterIgnoresStarterCancellation(t *testing.T) {
 func TestHAGraphqlClientFailsOverOnRedirect(t *testing.T) {
 	cluster := newFakeHACluster(t, 2)
 	cluster.setActive(0)
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	if _, err := doAndRead(t, doer, `{"q":1}`); err != nil {
 		t.Fatalf("first Do() returned error: %v", err)
@@ -454,7 +454,7 @@ func TestHAGraphqlClientFailsOverOnRedirect(t *testing.T) {
 func TestHAGraphqlClientNetworkError(t *testing.T) {
 	cluster := newFakeHACluster(t, 2)
 	cluster.setActive(0)
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	if _, err := doAndRead(t, doer, `{"q":1}`); err != nil {
 		t.Fatalf("first Do() returned error: %v", err)
@@ -485,7 +485,7 @@ func TestHAGraphqlClientNetworkError(t *testing.T) {
 
 func TestHAGraphqlClientNoActiveHost(t *testing.T) {
 	cluster := newFakeHACluster(t, 2)
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	_, err := doer.Do(newGraphQLRequest(t, `{"q":1}`))
 	if !errors.Is(err, apiclient.ErrActivePassiveNoActiveHost) {
@@ -498,7 +498,7 @@ func TestHAGraphqlClientMultipleActiveHosts(t *testing.T) {
 	cluster.mu.Lock()
 	cluster.active = map[int]bool{0: true, 1: true}
 	cluster.mu.Unlock()
-	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent)
+	doer := newHAGraphqlDoer(cluster.endpoints(t), userAgent, false)
 
 	_, err := doer.Do(newGraphQLRequest(t, `{"q":1}`))
 	if !errors.Is(err, apiclient.ErrActivePassiveMultipleActives) {
@@ -522,7 +522,7 @@ func TestHAGraphqlClientRedirectExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseEndpoint(%q) returned error: %v", srv.URL, err)
 	}
-	doer := newHAGraphqlDoer([]endpoint{ep}, userAgent)
+	doer := newHAGraphqlDoer([]endpoint{ep}, userAgent, false)
 
 	_, err = doer.Do(newGraphQLRequest(t, `{"q":1}`))
 	if !errors.Is(err, apiclient.ErrActivePassiveRetryExhausted) {

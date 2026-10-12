@@ -17,4 +17,9 @@ provider "cloudtower" {
 #   username           = "admin"
 #   password           = "password"
 #   user_source        = "LOCAL"
+#
+#   # Endpoints addressed by bare IP typically carry self-signed certificates
+#   # that cannot be verified; skip_tls_verify disables TLS certificate
+#   # verification (also via CLOUDTOWER_SKIP_TLS_VERIFY). Use with caution.
+#   skip_tls_verify = true
 # }

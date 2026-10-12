@@ -67,6 +67,14 @@ func New(version string) func() *schema.Provider {
 						"e.g. `[\"https://tower-a.example.com\", \"https://tower-b.example.com\"]`. " +
 						"The provider probes the endpoints to find the active node and fails over automatically when the active node switches. Conflicts with `cloudtower_server`.",
 				},
+				"skip_tls_verify": {
+					Type:        schema.TypeBool,
+					Optional:    true,
+					DefaultFunc: schema.EnvDefaultFunc("CLOUDTOWER_SKIP_TLS_VERIFY", nil),
+					Description: "Skip TLS certificate verification when connecting to CloudTower over HTTPS. " +
+						"Useful for endpoints whose self-signed certificates cannot be verified, e.g. bare IP addresses of an HA CloudTower. " +
+						"Use with caution: the connection is no longer protected against man-in-the-middle attacks.",
+				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  dataSourceDatacenter(),
@@ -107,6 +115,7 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		usersource := d.Get("user_source").(string)
 		server := d.Get("cloudtower_server").(string)
 		servers := d.Get("cloudtower_servers").([]interface{})
+		skipTLSVerify := d.Get("skip_tls_verify").(bool)
 		var usource models.UserSource
 		if usersource == "LDAP" {
 			usource = models.UserSourceLDAP
@@ -124,12 +133,12 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 			for _, s := range servers {
 				serverList = append(serverList, s.(string))
 			}
-			c, err = cloudtower.NewHAClient(ctx, serverList, username, password, usource)
+			c, err = cloudtower.NewHAClient(ctx, serverList, username, password, usource, skipTLSVerify)
 		} else {
 			if server == "" {
 				return nil, diag.Errorf("one of cloudtower_server and cloudtower_servers must be set, in the provider configuration or via the CLOUDTOWER_SERVER / CLOUDTOWER_SERVERS environment variables")
 			}
-			c, err = cloudtower.NewClient(ctx, server, username, password, usource)
+			c, err = cloudtower.NewClient(ctx, server, username, password, usource, skipTLSVerify)
 		}
 
 		if err != nil {
