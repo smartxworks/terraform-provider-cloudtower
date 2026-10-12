@@ -2,6 +2,7 @@ package cloudtower
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -45,9 +46,11 @@ type Client struct {
 	GraphqlApi *graphql.Client
 }
 
-func NewClient(server string, username string, passwd string, source models.UserSource) (*Client, error) {
-	transport := httptransport.New(server, "/v2/api", []string{"http"})
-	transport.Transport = SetUserAgent(transport.Transport, "terraform-provider-cloudtower")
+// NewClient creates a CloudTower API client. scheme is the URL scheme
+// (http or https); insecure skips TLS certificate verification (ai generated).
+func NewClient(server string, username string, passwd string, source models.UserSource, scheme string, insecure bool) (*Client, error) {
+	transport := httptransport.New(server, "/v2/api", []string{scheme})
+	transport.Transport = SetUserAgent(httpTransport(insecure), "terraform-provider-cloudtower")
 	api := apiclient.New(transport, strfmt.Default)
 	loginParams := user.NewLoginParams()
 	loginParams.RequestBody = &models.LoginInput{
@@ -55,7 +58,7 @@ func NewClient(server string, username string, passwd string, source models.User
 		Password: StrPtr(passwd),
 		Source:   &source,
 	}
-	graphqlClient := graphql.NewClient(fmt.Sprintf("http://%s/api", server), nil)
+	graphqlClient := graphql.NewClient(fmt.Sprintf("%s://%s/api", scheme, server), &http.Client{Transport: SetUserAgent(httpTransport(insecure), "terraform-provider-cloudtower")})
 	if source == models.UserSourceLDAP {
 		authConfigId, err := getLdapConfig(context.TODO(), graphqlClient)
 		if err != nil {
@@ -93,6 +96,18 @@ func NewClient(server string, username string, passwd string, source models.User
 			r.Header.Set("Authorization", *loginResp.Payload.Data.Token)
 		}),
 	}, nil
+}
+
+// httpTransport builds the base transport for the CloudTower API clients,
+// cloning http.DefaultTransport so per-client TLS settings do not leak into
+// the global default. insecure skips TLS certificate verification, for
+// endpoints whose self-signed certificates cannot be verified. ai generated
+func httpTransport(insecure bool) http.RoundTripper {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	return transport
 }
 
 func (c *Client) WaitTasksFinish(ctx context.Context, taskIds []string) (*task.GetTasksOK, error) {

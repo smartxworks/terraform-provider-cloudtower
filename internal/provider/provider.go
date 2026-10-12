@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func init() {
@@ -54,6 +55,23 @@ func New(version string) func() *schema.Provider {
 					DefaultFunc: schema.EnvDefaultFunc("CLOUDTOWER_SERVER", nil),
 					Description: "The CloudTower Server name.",
 				},
+				"scheme": {
+					Type:         schema.TypeString,
+					Optional:     true,
+					DefaultFunc:  schema.EnvDefaultFunc("CLOUDTOWER_SCHEME", "http"),
+					ValidateFunc: validation.StringInSlice([]string{"http", "https"}, false),
+					Description: "The URL scheme used to connect to CloudTower, either `http` or `https`. " +
+						"Defaults to `http`. Set to `https` (optionally together with `skip_tls_verify`) " +
+						"when the CloudTower endpoint serves TLS.",
+				},
+				"skip_tls_verify": {
+					Type:        schema.TypeBool,
+					Optional:    true,
+					DefaultFunc: schema.EnvDefaultFunc("CLOUDTOWER_SKIP_TLS_VERIFY", nil),
+					Description: "Skip TLS certificate verification when connecting to CloudTower over HTTPS. " +
+						"Useful for endpoints whose self-signed certificates cannot be verified, e.g. bare IP addresses. " +
+						"Use with caution: the connection is no longer protected against man-in-the-middle attacks.",
+				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
 				"cloudtower_datacenter":                  dataSourceDatacenter(),
@@ -93,13 +111,15 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		password := d.Get("password").(string)
 		usersource := d.Get("user_source").(string)
 		server := d.Get("cloudtower_server").(string)
+		scheme := d.Get("scheme").(string)
+		skipTLSVerify := d.Get("skip_tls_verify").(bool)
 		var usource models.UserSource
 		if usersource == "LDAP" {
 			usource = models.UserSourceLDAP
 		} else {
 			usource = models.UserSourceLOCAL
 		}
-		c, err := cloudtower.NewClient(server, username, password, usource)
+		c, err := cloudtower.NewClient(server, username, password, usource, scheme, skipTLSVerify)
 
 		if err != nil {
 			return nil, diag.FromErr(err)
