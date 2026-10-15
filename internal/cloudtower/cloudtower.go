@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -25,6 +24,14 @@ const (
 	GiB = 1 << 30
 )
 
+const (
+	userAgent = "terraform-provider-cloudtower"
+	// restBasePath is the base path of the CloudTower swagger API.
+	restBasePath = "/v2/api"
+	// graphqlPath is the path of the CloudTower GraphQL endpoint.
+	graphqlPath = "/api"
+)
+
 func StrPtr(s string) *string {
 	return &s
 }
@@ -35,32 +42,85 @@ func FloatPtr(f float64) *float64 {
 	return &f
 }
 
+// Client wraps the CloudTower API clients used by the provider.
 type Client struct {
-	server     string
-	username   string
-	passwd     string
-	source     models.UserSource
-	token      string
 	OrgId      string
 	Api        *apiclient.Cloudtower
 	GraphqlApi *graphql.Client
 }
 
-// NewClient creates a CloudTower API client. scheme is the URL scheme
-// (http or https); insecure skips TLS certificate verification (ai generated).
-func NewClient(server string, username string, passwd string, source models.UserSource, scheme string, insecure bool) (*Client, error) {
-	transport := httptransport.New(server, "/v2/api", []string{scheme})
-	transport.Transport = SetUserAgent(httpTransport(insecure), "terraform-provider-cloudtower")
-	api := apiclient.New(transport, strfmt.Default)
-	loginParams := user.NewLoginParams()
+// NewClient creates a CloudTower API client for a server with a single
+// management endpoint. The server address is a bare host[:port]; scheme is
+// the URL scheme (http or https) and insecure skips TLS certificate
+// verification. ai generated
+func NewClient(ctx context.Context, server string, username string, passwd string, source models.UserSource, scheme string, insecure bool) (*Client, error) {
+	return newClient(ctx, []string{server}, username, passwd, source, scheme, insecure)
+}
+
+// NewHAClient creates a CloudTower API client for an HA CloudTower (4.9.0+,
+// multiple management IPs in an active-passive deployment). servers lists the
+// management endpoints of the same HA cluster as bare host[:port] addresses.
+// The client probes the endpoints to find the active node and fails over
+// automatically when the active node switches. ai generated
+func NewHAClient(ctx context.Context, servers []string, username string, passwd string, source models.UserSource, scheme string, insecure bool) (*Client, error) {
+	return newClient(ctx, servers, username, passwd, source, scheme, insecure)
+}
+
+// httpTransport builds the base transport for the CloudTower API clients,
+// cloning http.DefaultTransport so per-client TLS settings do not leak into
+// the global default. insecure skips TLS certificate verification, for
+// endpoints whose self-signed certificates cannot be verified (e.g. bare IP
+// addresses). ai generated
+func httpTransport(insecure bool) http.RoundTripper {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	return transport
+}
+
+func newClient(ctx context.Context, servers []string, username string, passwd string, source models.UserSource, scheme string, insecure bool) (*Client, error) {
+	endpoints, err := parseEndpoints(servers, scheme)
+	if err != nil {
+		return nil, err
+	}
+
+	var api *apiclient.Cloudtower
+	var apClient *apiclient.ActivePassiveClient
+	if len(endpoints) == 1 {
+		api = newEndpointAPIClient(endpoints[0], insecure)
+	} else {
+		// an HA CloudTower is accessed through the SDK's active-passive
+		// client, which probes the endpoints for the active node and fails
+		// over automatically
+		var err error
+		apClient, err = apiclient.NewActivePassiveClient(ctx, apiclient.ActivePassiveClientConfig{
+			Endpoints:  toActivePassiveEndpoints(endpoints),
+			HTTPClient: &http.Client{Transport: SetUserAgent(httpTransport(insecure), userAgent)},
+		})
+		if err != nil {
+			return nil, err
+		}
+		api = apClient.Cloudtower
+	}
+
+	var graphqlClient *graphql.Client
+	if len(endpoints) == 1 {
+		graphqlClient = graphql.NewClient(endpoints[0].graphqlURL(), &http.Client{Transport: SetUserAgent(httpTransport(insecure), userAgent)})
+	} else {
+		// the GraphQL client shares the SDK client's active endpoint cache
+		// instead of tracking HA state on its own. ai generated
+		graphqlClient = graphql.NewClient(endpoints[0].graphqlURL(), newHAGraphqlDoer(apClient, userAgent, insecure))
+	}
+
+	loginParams := user.NewLoginParamsWithContext(ctx)
 	loginParams.RequestBody = &models.LoginInput{
 		Username: StrPtr(username),
 		Password: StrPtr(passwd),
 		Source:   &source,
 	}
-	graphqlClient := graphql.NewClient(fmt.Sprintf("%s://%s/api", scheme, server), &http.Client{Transport: SetUserAgent(httpTransport(insecure), "terraform-provider-cloudtower")})
 	if source == models.UserSourceLDAP {
-		authConfigId, err := getLdapConfig(context.TODO(), graphqlClient)
+		authConfigId, err := getLdapConfig(ctx, graphqlClient)
 		if err != nil {
 			return nil, err
 		}
@@ -74,40 +134,42 @@ func NewClient(server string, username string, passwd string, source models.User
 	if err != nil {
 		return nil, err
 	}
-	bearerTokenAuth := httptransport.BearerToken(*loginResp.Payload.Data.Token)
-	transport.DefaultAuthentication = bearerTokenAuth
-	api = apiclient.New(transport, strfmt.Default)
+	api.SetDefaultAuthentication(httptransport.BearerToken(*loginResp.Payload.Data.Token))
 
-	gop := organization.NewGetOrganizationsParams()
+	gop := organization.NewGetOrganizationsParamsWithContext(ctx)
 	orgs, err := api.Organization.GetOrganizations(gop)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		server:   server,
-		username: username,
-		passwd:   passwd,
-		source:   source,
-		token:    *loginResp.Payload.Data.Token,
-		OrgId:    *orgs.Payload[0].ID,
-		Api:      api,
+		OrgId: *orgs.Payload[0].ID,
+		Api:   api,
 		GraphqlApi: graphqlClient.WithRequestModifier(func(r *http.Request) {
 			r.Header.Set("Authorization", *loginResp.Payload.Data.Token)
 		}),
 	}, nil
 }
 
-// httpTransport builds the base transport for the CloudTower API clients,
-// cloning http.DefaultTransport so per-client TLS settings do not leak into
-// the global default. insecure skips TLS certificate verification, for
-// endpoints whose self-signed certificates cannot be verified. ai generated
-func httpTransport(insecure bool) http.RoundTripper {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+func toActivePassiveEndpoints(endpoints []endpoint) []apiclient.ActivePassiveEndpointConfig {
+	result := make([]apiclient.ActivePassiveEndpointConfig, 0, len(endpoints))
+	for _, ep := range endpoints {
+		result = append(result, apiclient.ActivePassiveEndpointConfig{
+			Host:     ep.host,
+			Schemes:  []string{ep.scheme},
+			BasePath: restBasePath,
+		})
 	}
-	return transport
+	return result
+}
+
+// newEndpointAPIClient creates an SDK client for a single management
+// endpoint. It backs the plain single endpoint setup and provides the SDK's
+// ProbeActivePassive for the endpoints of an HA CloudTower.
+func newEndpointAPIClient(ep endpoint, insecure bool) *apiclient.Cloudtower {
+	transport := httptransport.New(ep.host, restBasePath, []string{ep.scheme})
+	transport.Transport = SetUserAgent(httpTransport(insecure), userAgent)
+	return apiclient.New(transport, strfmt.Default)
 }
 
 func (c *Client) WaitTasksFinish(ctx context.Context, taskIds []string) (*task.GetTasksOK, error) {

@@ -1,6 +1,7 @@
 package cloudtower
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func TestNewClientPlainHTTP(t *testing.T) {
 
 	host := strings.TrimPrefix(srv.URL, "http://")
 	for _, insecure := range []bool{false, true} {
-		if _, err := NewClient(host, "user", "pass", "LOCAL", "http", insecure); err != nil {
+		if _, err := NewClient(context.Background(), host, "user", "pass", "LOCAL", "http", insecure); err != nil {
 			t.Fatalf("NewClient(insecure=%v) over plain HTTP returned error: %v", insecure, err)
 		}
 	}
