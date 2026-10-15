@@ -24,3 +24,5 @@ description: |-
 ### Optional
 
 - `cloudtower_server` (String) The CloudTower Server name.
+- `scheme` (String) The URL scheme used to connect to CloudTower, either `http` or `https`. Defaults to `http`. Set to `https` (optionally together with `skip_tls_verify`) when the CloudTower endpoint serves TLS.
+- `skip_tls_verify` (Boolean) Skip TLS certificate verification when connecting to CloudTower over HTTPS. Useful for endpoints whose self-signed certificates cannot be verified, e.g. bare IP addresses. Use with caution: the connection is no longer protected against man-in-the-middle attacks.
